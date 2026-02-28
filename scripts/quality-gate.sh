@@ -53,8 +53,12 @@ fi
 
 # 2. LINT
 echo -e "🔍 Lint..."
+# Add shopt for ** to work properly
+shopt -s globstar
+
 if command -v ruff &>/dev/null && ls *.py **/*.py 2>/dev/null | head -1 &>/dev/null; then
-    LINT_ERRORS=$(ruff check . --statistics 2>/dev/null | tail -1 | grep -oP '^\d+' || echo "0")
+    # Use tr, grep, and awk to extract digits without needing grep -P, which is missing on macOS
+    LINT_ERRORS=$(ruff check . --statistics 2>/dev/null | tail -1 | grep -o '[0-9]\+' || echo "0")
     [ "${LINT_ERRORS:-0}" = "0" ] && check "Lint (ruff)" "pass" || check "Lint (ruff)" "fail" "$LINT_ERRORS errors"
 elif [ -f "node_modules/.bin/eslint" ]; then
     LINT_OUT=$(npx eslint . --format compact 2>/dev/null | tail -1)
@@ -62,6 +66,9 @@ elif [ -f "node_modules/.bin/eslint" ]; then
 else
     check "Lint" "warn" "(no linter configured)"
 fi
+
+# Reset globstar back to avoiding unpredicted behavior
+shopt -u globstar
 
 # 3. TEST UNITARI
 echo -e "🧪 Test..."
@@ -91,7 +98,8 @@ fi
 
 # 5. SECURITY (basic)
 echo -e "🔒 Security..."
-SECRETS_FOUND=$(grep -rn "password\s*=\s*['\"]" --include="*.py" --include="*.js" --include="*.ts" . 2>/dev/null | grep -v "test\|mock\|example\|\.env" | wc -l)
+# Use grep -E for extended regex support, solving the \s issue
+SECRETS_FOUND=$(grep -rnE "password[[:space:]]+=[[:space:]]+['\"]" --include="*.py" --include="*.js" --include="*.ts" . 2>/dev/null | grep -v "test\|mock\|example\|\.env" | wc -l)
 [ "$SECRETS_FOUND" -eq 0 ] && check "Secrets scan" "pass" || check "Secrets scan" "fail" "$SECRETS_FOUND potential hardcoded secrets"
 
 if [ -f "requirements.txt" ] && command -v pip-audit &>/dev/null; then
