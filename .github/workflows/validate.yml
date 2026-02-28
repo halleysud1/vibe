@@ -1,0 +1,136 @@
+name: Validate Plugin
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate plugin.json
+        run: |
+          echo "🔍 Checking plugin.json..."
+          if ! python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"; then
+            echo "❌ plugin.json is not valid JSON"
+            exit 1
+          fi
+          echo "✅ plugin.json is valid"
+
+      - name: Validate marketplace.json
+        run: |
+          echo "🔍 Checking marketplace.json..."
+          if ! python3 -c "import json; json.load(open('.claude-plugin/marketplace.json'))"; then
+            echo "❌ marketplace.json is not valid JSON"
+            exit 1
+          fi
+          echo "✅ marketplace.json is valid"
+
+      - name: Validate hooks.json
+        run: |
+          echo "🔍 Checking hooks.json..."
+          if ! python3 -c "import json; json.load(open('hooks/hooks.json'))"; then
+            echo "❌ hooks.json is not valid JSON"
+            exit 1
+          fi
+          echo "✅ hooks.json is valid"
+
+      - name: Check required files exist
+        run: |
+          echo "🔍 Checking required files..."
+          MISSING=0
+          for f in \
+            ".claude-plugin/plugin.json" \
+            "README.md" \
+            "LICENSE" \
+            "commands/init.md" \
+            "commands/validate.md" \
+            "commands/report.md" \
+            "commands/status.md" \
+            "agents/architect.md" \
+            "agents/reviewer.md" \
+            "agents/security-auditor.md" \
+            "agents/tester.md" \
+            "agents/validation-agent.md" \
+            "skills/methodology.md" \
+            "skills/context-optimization.md" \
+            "skills/validation-strategies.md" \
+            "skills/quality-system.md" \
+            "hooks/hooks.json" \
+            "scripts/quality-gate.sh" \
+            "templates/docs/vibecoding/METHODOLOGY.md" \
+            "templates/docs/vibecoding/CONTEXT_RULES.md"
+          do
+            if [ ! -f "$f" ]; then
+              echo "  ❌ Missing: $f"
+              MISSING=$((MISSING + 1))
+            else
+              echo "  ✅ $f"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "❌ $MISSING required files missing"
+            exit 1
+          fi
+          echo "✅ All required files present"
+
+      - name: Validate agent frontmatter
+        run: |
+          echo "🔍 Checking agent frontmatter..."
+          for f in agents/*.md; do
+            if ! head -1 "$f" | grep -q "^---"; then
+              echo "  ❌ $f: missing YAML frontmatter"
+              exit 1
+            fi
+            if ! grep -q "^name:" "$f"; then
+              echo "  ❌ $f: missing 'name' in frontmatter"
+              exit 1
+            fi
+            if ! grep -q "^description:" "$f"; then
+              echo "  ❌ $f: missing 'description' in frontmatter"
+              exit 1
+            fi
+            echo "  ✅ $f"
+          done
+          echo "✅ All agents have valid frontmatter"
+
+      - name: Validate skill frontmatter
+        run: |
+          echo "🔍 Checking skill frontmatter..."
+          for f in skills/*.md; do
+            if ! head -1 "$f" | grep -q "^---"; then
+              echo "  ❌ $f: missing YAML frontmatter"
+              exit 1
+            fi
+            echo "  ✅ $f"
+          done
+          echo "✅ All skills have valid frontmatter"
+
+      - name: Check scripts are executable
+        run: |
+          echo "🔍 Checking script permissions..."
+          for f in scripts/*.sh; do
+            if [ ! -x "$f" ]; then
+              echo "  ⚠️ $f is not executable (will fix)"
+              chmod +x "$f"
+            fi
+            echo "  ✅ $f"
+          done
+
+      - name: Summary
+        run: |
+          echo ""
+          echo "════════════════════════════════════════"
+          echo "  ✅ Vibecoding Plugin Validation Passed"
+          echo "════════════════════════════════════════"
+          echo ""
+          echo "  Commands: $(ls commands/*.md | wc -l)"
+          echo "  Agents:   $(ls agents/*.md | wc -l)"
+          echo "  Skills:   $(ls skills/*.md | wc -l)"
+          echo "  Hooks:    $(python3 -c "import json; d=json.load(open('hooks/hooks.json')); print(sum(len(v) for v in d.get('hooks',{}).values()))")"
+          echo "  Scripts:  $(ls scripts/*.sh | wc -l)"
+          echo "  Templates:$(find templates -type f | wc -l)"

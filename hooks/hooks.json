@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -f .vibecoding ]; then echo '{\"message\": \"🎯 Vibecoding attivo. Leggi CLAUDE.md, PLAN.md e decisions.log per il contesto.\"}'; fi"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'if [ -f .vibecoding ] && [ -f PLAN.md ]; then INCOMPLETE=$(grep -c \"⬜\\|🔄\" PLAN.md 2>/dev/null || echo 0); if [ \"$INCOMPLETE\" -gt 0 ]; then FAILED=0; if command -v pytest &>/dev/null && [ -d tests ]; then pytest --tb=no -q 2>/dev/null | tail -1 | grep -q \"failed\" && FAILED=1; elif [ -f package.json ] && grep -q \"test\" package.json; then npm test --silent 2>/dev/null || FAILED=1; fi; if [ $FAILED -eq 1 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Test falliti. Correggi prima di fermarti.\\\"}\"; elif [ \"$INCOMPLETE\" -gt 2 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"$INCOMPLETE task ancora da completare in PLAN.md. Prosegui.\\\"}\"; fi; fi; fi'"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'INPUT=$(cat); CMD=$(echo \"$INPUT\" | jq -r \".tool_input.command // empty\" 2>/dev/null); if echo \"$CMD\" | grep -qE \"rm\\s+-rf\\s+/|rm\\s+-rf\\s+~|DROP\\s+DATABASE|format\\s+c:\"; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Comando distruttivo bloccato: $CMD\\\"}\"; fi'"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'INPUT=$(cat); FILE=$(echo \"$INPUT\" | jq -r \".tool_input.file_path // empty\" 2>/dev/null); if [ -n \"$FILE\" ]; then EXT=\"${FILE##*.}\"; if [ \"$EXT\" = \"py\" ] && command -v ruff &>/dev/null; then ruff check \"$FILE\" --fix --quiet 2>/dev/null; elif echo \"$EXT\" | grep -qE \"^(js|ts|jsx|tsx)$\" && command -v npx &>/dev/null && [ -f node_modules/.bin/eslint ]; then npx eslint --fix \"$FILE\" --quiet 2>/dev/null; fi; fi'"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'INPUT=$(cat); MSG=$(echo \"$INPUT\" | jq -r \".message // \\\"Claude needs attention\\\"\" 2>/dev/null); if command -v notify-send &>/dev/null; then notify-send \"Vibecoding\" \"$MSG\"; elif command -v osascript &>/dev/null; then osascript -e \"display notification \\\"$MSG\\\" with title \\\"Vibecoding\\\"\"; fi'"
+          }
+        ]
+      }
+    ]
+  }
+}

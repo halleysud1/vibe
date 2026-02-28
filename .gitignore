@@ -1,0 +1,28 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Project-generated files (these are created by the plugin in user projects, not part of the plugin itself)
+decisions.log
+validation_results.json
+validation_screenshots/
+VALIDATION_REPORT.md
+REPORT.md
+PLAN.md
+PROJECT_SPEC.md

@@ -1,0 +1,34 @@
+{
+  "name": "vibecoding",
+  "version": "2.0.0",
+  "description": "Sistema di sviluppo autonomo multi-agente con validazione del prodotto. Trasforma Claude Code in un team di sviluppo completo che costruisce, testa, e verifica il software dal punto di vista dell'utente finale.",
+  "author": {
+    "name": "Gianluigi — Halley Sud SRL",
+    "url": "https://github.com/halleysud"
+  },
+  "homepage": "https://github.com/halleysud/vibecoding",
+  "repository": "https://github.com/halleysud/vibecoding",
+  "license": "MIT",
+  "keywords": [
+    "vibecoding",
+    "autonomous",
+    "multi-agent",
+    "validation",
+    "quality",
+    "tdd",
+    "testing",
+    "development-workflow",
+    "product-validation",
+    "code-review",
+    "security-audit"
+  ],
+  "commands": [
+    "./commands/init.md",
+    "./commands/validate.md",
+    "./commands/report.md",
+    "./commands/status.md"
+  ],
+  "agents": "./agents/",
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json"
+}
