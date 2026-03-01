@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'if [ -f .vibecoding ] && [ -f PLAN.md ]; then INCOMPLETE=$(grep -c \"\\[ \\]\\|TODO\\|IN PROGRESS\" PLAN.md 2>/dev/null || echo 0); if [ \"$INCOMPLETE\" -gt 0 ]; then FAILED=0; if command -v pytest &>/dev/null && [ -d tests ]; then pytest --tb=no -q 2>/dev/null | tail -1 | grep -q \"failed\" && FAILED=1; elif [ -f package.json ] && grep -q \"test\" package.json; then npm test --silent 2>/dev/null || FAILED=1; fi; if [ $FAILED -eq 1 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Test falliti. Correggi prima di fermarti.\\\"}\"; elif [ \"$INCOMPLETE\" -gt 2 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"$INCOMPLETE task ancora da completare in PLAN.md. Prosegui.\\\"}\"; fi; fi; fi'"
+            "command": "bash -c 'if [ -f .vibecoding ] && [ -f PLAN.md ]; then INCOMPLETE=$(grep -c \"⬜\\|🔄\" PLAN.md 2>/dev/null || echo 0); if [ \"$INCOMPLETE\" -gt 0 ]; then FAILED=0; if command -v pytest &>/dev/null && [ -d tests ]; then pytest --tb=no -q 2>/dev/null | tail -1 | grep -q \"failed\" && FAILED=1; elif [ -f package.json ] && grep -q \"test\" package.json; then npm test --silent 2>/dev/null || FAILED=1; fi; if [ $FAILED -eq 1 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"Test falliti. Correggi prima di fermarti.\\\"}\"; elif [ \"$INCOMPLETE\" -gt 2 ]; then echo \"{\\\"decision\\\": \\\"block\\\", \\\"reason\\\": \\\"$INCOMPLETE task ancora da completare in PLAN.md. Prosegui.\\\"}\"; fi; fi; fi'"
           }
         ]
       }
