@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ -f .vibecoding ]; then echo '{\"message\": \"🎯 Vibecoding attivo. Leggi CLAUDE.md, PLAN.md e decisions.log per il contesto.\"}'; fi"
+            "command": "bash -c 'if [ ! -f .vibecoding ]; then exit 0; fi; echo \"=== VIBECODING 2.0 — CONTESTO PROGETTO ===\"; echo \"\"; for f in CLAUDE.md PLAN.md PROJECT_SPEC.md; do if [ -f \"$f\" ]; then echo \"=== $f ===\"; cat \"$f\"; echo \"\"; fi; done; if [ -f docs/ARCHITECTURE.md ]; then echo \"=== docs/ARCHITECTURE.md ===\"; head -80 docs/ARCHITECTURE.md; echo \"\"; fi; if [ -f decisions.log ]; then echo \"=== decisions.log (ultime 20) ===\"; tail -20 decisions.log; echo \"\"; fi; echo \"=== FILE DISPONIBILI ===\"; for f in CLAUDE.md PROJECT_SPEC.md PLAN.md decisions.log docs/ARCHITECTURE.md docs/vibecoding/METHODOLOGY.md docs/vibecoding/VALIDATION_STRATEGY.md docs/vibecoding/CONTEXT_RULES.md; do if [ -f \"$f\" ]; then echo \"  OK $f\"; fi; done; echo \"\"; echo \"Sei in un progetto Vibecoding 2.0. Rispetta i vincoli di CLAUDE.md.\"; echo \"Aggiorna PLAN.md quando completi un task. Logga decisioni in decisions.log.\"; echo \"==================================\"'"
           }
         ]
       }
