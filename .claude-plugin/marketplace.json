@@ -12,7 +12,7 @@
   "plugins": [
     {
       "name": "vibecoding",
-      "source": ".",
+      "source": "./",
       "description": "Trasforma Claude Code in un team di sviluppo completo che costruisce, testa, e verifica il software dal punto di vista dell'utente finale. Include 5 agenti specializzati, hooks deterministici, 4 comandi slash, e un Validation Agent che testa il prodotto come un utente reale.",
       "version": "2.0.0",
       "author": {

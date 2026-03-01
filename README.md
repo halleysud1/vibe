@@ -8,22 +8,53 @@ Vibecoding 2.0 è un sistema di sviluppo software autonomo multi-agente. Dai una
 
 - **5 agenti specializzati** lavorano come un team: Architect, Reviewer, Security Auditor, Tester, e un Validation Agent che testa il prodotto come un utente reale
 - **Hooks deterministici** impediscono a Claude di fermarsi prima che i test passino o di eseguire comandi distruttivi
-- **4 comandi slash** per controllare il flusso: init, validate, report, status
+- **3 comandi slash** per controllare il flusso: init, validate, status
 - **Documentazione embedded** nel progetto — la metodologia vive con il codice
 - **Validazione del prodotto** — non solo test del codice, ma test dell'esperienza utente con Playwright, HTTP client, companion bot
 
 ## Installazione
 
 ```bash
-# Da GitHub
-/plugin install github:halleysud/vibecoding
+# 1. Aggiungi il marketplace
+claude plugin marketplace add halleysud1/vibe
 
-# Da marketplace (dopo averlo aggiunto)
-/plugin marketplace add github:halleysud/vibecoding
-/plugin install vibecoding@vibecoding-marketplace
+# 2. Installa il plugin
+claude plugin install vibecoding@vibecoding-marketplace
+```
 
-# Da locale (per sviluppo)
-/plugin install /path/to/vibecoding
+### Installazione manuale (alternativa)
+
+Se l'installazione automatica non funziona, puoi configurare il plugin manualmente:
+
+```bash
+# 1. Clona il repo nella cartella plugins di Claude Code
+git clone https://github.com/halleysud1/vibe.git ~/.claude/plugins/vibe
+
+# 2. Aggiungi questa configurazione al tuo ~/.claude/settings.json
+```
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "vibecoding-marketplace": {
+      "source": {
+        "source": "directory",
+        "path": "<PERCORSO_ASSOLUTO>/.claude/plugins/vibe"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "vibecoding@vibecoding-marketplace": true
+  }
+}
+```
+
+> **Nota:** Sostituisci `<PERCORSO_ASSOLUTO>` con il percorso home del tuo sistema (es. `/home/user` su Linux, `/Users/user` su macOS, `C:\\Users\\user` su Windows).
+
+```bash
+# 3. Riavvia Claude Code e verifica
+claude plugin list
+# Deve mostrare: vibecoding@vibecoding-marketplace
 ```
 
 ## Quick Start
@@ -76,7 +107,7 @@ claude --dangerously-skip-permissions
        │
        ▼
   ┌───────────┐
-  │  REPORT   │ ← /vibecoding:report
+  │  STATUS   │ ← /vibecoding:status
   └───────────┘
 ```
 
@@ -86,7 +117,6 @@ claude --dangerously-skip-permissions
 |---------|---------|
 | `/vibecoding:init` | Crea PROJECT_SPEC, PLAN, architettura, e avvia lo sviluppo |
 | `/vibecoding:validate` | Lancia il Validation Agent per testare il prodotto dal vivo |
-| `/vibecoding:report` | Genera report completo: avanzamento, test, sicurezza, validazione |
 | `/vibecoding:status` | Overview rapido inline |
 
 ## Agenti
@@ -184,15 +214,15 @@ Apri la tab **Code** → clicca **+** → **Plugins** → **Add plugin** → sel
 
 ## Usare come marketplace di team
 
-Per distribuire il Vibecoding a tutto il team Halley Sud, aggiungi al `.claude/settings.json` dei progetti:
+Per distribuire il Vibecoding a tutto il team, aggiungi al `.claude/settings.json` dei progetti:
 
 ```json
 {
   "extraKnownMarketplaces": {
-    "vibecoding": {
+    "vibecoding-marketplace": {
       "source": {
         "source": "github",
-        "repo": "halleysud/vibecoding"
+        "repo": "halleysud1/vibe"
       }
     }
   },

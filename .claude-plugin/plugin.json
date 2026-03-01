@@ -25,7 +25,6 @@
   "commands": [
     "./commands/init.md",
     "./commands/validate.md",
-    "./commands/report.md",
     "./commands/status.md"
   ],
   "agents": "./agents/",
