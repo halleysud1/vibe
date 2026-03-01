@@ -27,7 +27,18 @@
     "./commands/validate.md",
     "./commands/status.md"
   ],
-  "agents": "./agents/",
-  "skills": "./skills/",
+  "agents": [
+    "./agents/architect.md",
+    "./agents/reviewer.md",
+    "./agents/security-auditor.md",
+    "./agents/tester.md",
+    "./agents/validation-agent.md"
+  ],
+  "skills": [
+    "./skills/methodology.md",
+    "./skills/quality-system.md",
+    "./skills/context-optimization.md",
+    "./skills/validation-strategies.md"
+  ],
   "hooks": "./hooks/hooks.json"
 }
