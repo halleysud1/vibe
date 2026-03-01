@@ -11,7 +11,32 @@ Sei l'Orchestrator del sistema Vibecoding 2.0. L'utente sta inizializzando un nu
 
 ---
 
+## FASE 0: Rileva PROJECT_SPEC.md esistente
+
+**PRIMA DI TUTTO**, controlla se nella directory corrente esiste già un file `PROJECT_SPEC.md`.
+
+### Se PROJECT_SPEC.md ESISTE:
+1. **Leggilo integralmente** con il tool Read
+2. **Analizza il contenuto** — verifica che contenga informazioni sufficienti su:
+   - Obiettivo del progetto e problema da risolvere
+   - Utenti target e flussi di lavoro
+   - Requisiti funzionali (anche se non nel formato Vibecoding)
+   - Eventuali vincoli tecnici o di ecosistema
+3. **Applica la diagnosi anti-overfit** (FASE 2) sui requisiti trovati
+4. **Riformatta se necessario** — se il file non è nel formato Vibecoding a 3 livelli, riscrivilo nel formato standard mantenendo TUTTE le informazioni originali. Non perdere nulla.
+5. **SALTA la FASE 1** (intervista) — le spec sono già fornite dall'utente
+6. **Procedi direttamente** alla FASE 3 (o FASE 4 se il PROJECT_SPEC è già completo)
+
+### Se PROJECT_SPEC.md NON ESISTE:
+Procedi normalmente con la FASE 1 (intervista interattiva).
+
+> **Logica:** Se l'utente ha preparato un PROJECT_SPEC.md prima di lanciare `/vibecoding:init`, significa che vuole un flusso fire-and-forget. Rispetta le sue spec e parti subito.
+
+---
+
 ## FASE 1: Intervista (INTERATTIVA)
+
+> **Nota:** Questa fase viene SALTATA se un PROJECT_SPEC.md è già presente nella directory.
 
 L'init NON è un comando fire-and-forget. Devi fare domande all'utente per raccogliere il contesto che non puoi inventare. Senza queste informazioni, qualsiasi cosa costruisci sarà sbagliata o troppo rigida.
 

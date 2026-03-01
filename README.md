@@ -206,7 +206,9 @@ claude --permission-mode acceptEdits
 
 ### Fire and forget
 ```bash
-claude --dangerously-skip-permissions -p "/vibecoding:init — Sviluppa un'API REST per gestione inventario. Stack: Python/FastAPI/PostgreSQL."
+# 1. Prepara un PROJECT_SPEC.md nella cartella del progetto
+# 2. Lancia Claude — leggerà le spec e partirà da solo
+claude --dangerously-skip-permissions -p "/vibecoding:init"
 ```
 
 ### Claude Desktop
