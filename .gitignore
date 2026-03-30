@@ -19,10 +19,13 @@ __pycache__/
 venv/
 
 # Project-generated files (these are created by the plugin in user projects, not part of the plugin itself)
-decisions.log
-validation_results.json
-validation_screenshots/
-VALIDATION_REPORT.md
-REPORT.md
-PLAN.md
-PROJECT_SPEC.md
+# Note: anchored to root with / so they don't accidentally match plugin files (e.g. commands/plan.md)
+/decisions.log
+/validation_results.json
+/validation_screenshots/
+/VALIDATION_REPORT.md
+/REPORT.md
+/PLAN.md
+/PROJECT_SPEC.md
+/.vibecoding
+/.vibecoding-state.md

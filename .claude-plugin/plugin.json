@@ -1,7 +1,7 @@
 {
   "name": "vibecoding",
-  "version": "2.0.0",
-  "description": "Sistema di sviluppo autonomo multi-agente con validazione del prodotto. Trasforma Claude Code in un team di sviluppo completo che costruisce, testa, e verifica il software dal punto di vista dell'utente finale.",
+  "version": "2.1.0",
+  "description": "Sistema di sviluppo autonomo multi-agente con validazione del prodotto, esecuzione parallela, e integrazione Claude Preview. Trasforma Claude Code in un team di sviluppo completo con quality gate deterministici e hook intelligenti.",
   "author": {
     "name": "Gianluigi — Halley Sud SRL",
     "url": "https://github.com/halleysud"
@@ -20,12 +20,40 @@
     "development-workflow",
     "product-validation",
     "code-review",
-    "security-audit"
+    "security-audit",
+    "parallel",
+    "preview",
+    "compaction"
   ],
   "commands": [
     "./commands/init.md",
     "./commands/validate.md",
-    "./commands/status.md"
+    "./commands/status.md",
+    "./commands/review.md",
+    "./commands/plan.md"
   ],
-  "hooks": "./hooks/hooks.json"
+  "skills": [
+    "./skills/methodology.md",
+    "./skills/validation-strategies.md",
+    "./skills/quality-system.md",
+    "./skills/parallel-execution.md"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "userConfig": {
+    "qualityScoreTarget": {
+      "type": "number",
+      "default": 70,
+      "description": "Punteggio qualità minimo per considerare il progetto completato (0-100)"
+    },
+    "validationPassThreshold": {
+      "type": "number",
+      "default": 80,
+      "description": "Percentuale minima di scenari di validazione che devono passare"
+    },
+    "autoLintLanguages": {
+      "type": "string",
+      "default": "py,js,ts,jsx,tsx,go,rs",
+      "description": "Linguaggi per auto-lint dopo scrittura file (separati da virgola)"
+    }
+  }
 }

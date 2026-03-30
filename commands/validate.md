@@ -1,6 +1,6 @@
 ---
 name: validate
-description: "Lancia il Validation Agent per testare il prodotto dal punto di vista dell'utente finale. Costruisce un client automatico, esegue scenari reali, e produce un report di validazione."
+description: "Lancia il Validation Agent per testare il prodotto dal punto di vista dell'utente finale. Usa Claude Preview quando disponibile, altrimenti Playwright/HTTP. Esegue review e security audit in parallelo."
 ---
 
 # /vibecoding:validate — Validazione del Prodotto
@@ -35,7 +35,16 @@ Prima di validare, assicurati che il prodotto sia in esecuzione:
 - **Bot**: Avvia il bot
 - **CLI**: Nessun server necessario
 
-Usa i background task di Claude Code per tenere i server attivi senza bloccare la sessione.
+### 2b. Rileva Claude Preview (NUOVO in 2.1)
+
+Se l'applicazione è una **Web App** o ha un **frontend**:
+1. Verifica se i tool MCP `preview_*` sono disponibili
+2. Se disponibili e il progetto ha un `launch.json`:
+   - Usa `preview_start` per avviare il server
+   - Comunica al validation-agent di usare il metodo Preview
+3. Se NON disponibili:
+   - Avvia il server manualmente in background
+   - Il validation-agent userà Playwright come fallback
 
 ### 3. Delega al validation-agent
 
@@ -44,6 +53,9 @@ Invoca il subagente `validation-agent` con il contesto:
 - Tipo di applicazione
 - Scenari da `VALIDATION_STRATEGY.md`
 - URL/porta del server se applicabile
+- Metodo di validazione (preview / playwright / httpx / custom)
+
+Il validation-agent gira in **worktree isolato** — non interferisce con lo sviluppo in corso.
 
 ### 4. Raccogli e analizza i risultati
 
@@ -56,21 +68,44 @@ Il validation-agent restituirà:
 
 ### 5. Agisci sui risultati
 
-- **Tutti gli scenari passano** → Scrivi `VALIDATION_REPORT.md`, aggiorna PLAN.md, procedi
-- **Scenari falliti** → Correggi i problemi, poi ri-esegui la validazione (loop max 3 iterazioni)
-- **Problemi di UX** → Logga in `decisions.log` e correggi se il fix è ragionevole
+- **Tutti gli scenari passano** — Scrivi `VALIDATION_REPORT.md`, aggiorna PLAN.md, procedi
+- **Scenari falliti** — Correggi i problemi, poi ri-esegui la validazione (loop max 3 iterazioni)
+- **Problemi di UX** — Logga in `decisions.log` e correggi se il fix è ragionevole
+
+### 5b. Review e Security Audit paralleli (NUOVO in 2.1)
+
+Dopo la validazione (o in parallelo se i risultati sono positivi):
+
+1. **Invoca in parallelo** (come subagenti simultanei):
+   - `reviewer` — code review del codebase
+   - `security-auditor` — audit di sicurezza
+
+2. **Raccogli entrambi i report** e uniscili nel VALIDATION_REPORT.md
+
+3. **Se ci sono problemi critici** da review o security:
+   - Fix automatico
+   - Re-run del gate che ha fallito
+   - Max 2 iterazioni
 
 ### 6. Genera VALIDATION_REPORT.md
 
 ```markdown
 # VALIDATION REPORT — [Nome Progetto]
 ## Data: [timestamp]
-## Strategia: [tipo di validazione usata]
+## Metodo: [Claude Preview / Playwright / httpx / custom]
 
 ### Scenari Testati
 | # | Scenario | Esito | Note |
 |---|----------|-------|------|
-| 1 | ... | ✅/❌ | ... |
+| 1 | ... | Pass/Fail | ... |
+
+### Code Review
+[Sommario dal reviewer agent]
+Verdetto: [APPROVATO / RICHIEDE MODIFICHE / RIFIUTATO]
+
+### Security Audit
+[Sommario dal security-auditor agent]
+Verdetto: [SICURO / ACCETTABILE / NON RILASCIABILE]
 
 ### Problemi Trovati e Risolti
 [lista con descrizione e fix applicato]
@@ -81,5 +116,5 @@ Il validation-agent restituirà:
 ### Evidenze
 [screenshot, log, output del validation agent]
 
-### Verdetto: ✅ VALIDATO / ❌ NON VALIDATO
+### Verdetto Complessivo: VALIDATO / NON VALIDATO
 ```

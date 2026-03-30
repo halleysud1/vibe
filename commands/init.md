@@ -1,13 +1,13 @@
 ---
 name: init
-description: "Inizializza un nuovo progetto con il sistema Vibecoding 2.0. Intervista l'utente su dominio e vincoli, poi genera PROJECT_SPEC, PLAN, e struttura docs."
+description: "Inizializza un nuovo progetto con il sistema Vibecoding 2.1. Intervista l'utente su dominio e vincoli, poi genera PROJECT_SPEC, PLAN, e struttura docs."
 ---
 
 # /vibecoding:init — Bootstrap Progetto
 
 ## Cosa devi fare
 
-Sei l'Orchestrator del sistema Vibecoding 2.0. L'utente sta inizializzando un nuovo progetto. Il tuo lavoro è **capire cosa vuole** prima di costruire qualsiasi cosa.
+Sei l'Orchestrator del sistema Vibecoding 2.1. L'utente sta inizializzando un nuovo progetto. Il tuo lavoro è **capire cosa vuole** prima di costruire qualsiasi cosa.
 
 ---
 
@@ -93,9 +93,9 @@ Queste domande evitano che il modello faccia scelte brillanti ma incompatibili.
 3. **Non chiedere cose che puoi decidere tu.** Le domande riguardano SOLO Livello 1 (business) e Livello 2 (vincoli). Mai chiedere "quale framework vuoi?" o "come strutturiamo il codice?" — quelle sono scelte tue (Livello 3).
 
 4. **Se l'utente risponde "non so" o "decidi tu"**, valuta:
-   - Se è una domanda di Livello 1 (business) → insisti gentilmente, perché DEVI saperlo
-   - Se è una domanda di Livello 2 (vincoli) → prendi nota che non c'è vincolo, sei libero
-   - Se per errore hai chiesto qualcosa di Livello 3 → scusati, è una tua scelta
+   - Se è una domanda di Livello 1 (business) — insisti gentilmente, perché DEVI saperlo
+   - Se è una domanda di Livello 2 (vincoli) — prendi nota che non c'è vincolo, sei libero
+   - Se per errore hai chiesto qualcosa di Livello 3 — scusati, è una tua scelta
 
 5. **Massimo 2-3 round di domande.** Non trasformare l'intervista in un interrogatorio. Se dopo 2 round mancano ancora informazioni, fai le migliori assunzioni possibili, documentale, e procedi.
 
@@ -113,10 +113,9 @@ Quando un utente descrive cosa vuole, spesso dà **esempi concreti** che sembran
 
 | L'utente dice | Cosa intende davvero | Come specificarlo |
 |--------------|---------------------|-------------------|
-| "Il punteggio di velocità si calcola come media pesata tra tempo chiusura ticket (40%) e task completati (60%)" | Voglio misurare la velocità dei dipendenti basandomi sui dati di ticket e task | RF: "Il sistema misura la velocità dei dipendenti. Le metriche di input e i pesi sono **configurabili dall'admin**. Default suggerito: tempo chiusura ticket (40%), task completati entro deadline (60%)." |
-| "Ci sono 5 livelli: Cadetto, Pilota, Comandante, Ammiraglio, Leggenda" | Voglio una progressione a livelli con nomi evocativi | RF: "Il sistema supporta un numero **configurabile** di livelli di progressione con nome e soglia personalizzabili. Default: 5 livelli." |
-| "Ogni lunedì si genera il report settimanale" | Voglio report periodici | RF: "Il sistema genera report periodici. La frequenza è **configurabile** (default: settimanale, lunedì)." |
-| "Il badge 'Fulmine' si assegna a chi chiude 10 ticket in un giorno" | Voglio badge automatici basati su achievement | RF: "Il sistema supporta badge con condizioni di assegnazione **configurabili**. L'admin può creare badge con nome, icona, e regole di trigger personalizzate." |
+| "Il punteggio si calcola come media pesata tra A (40%) e B (60%)" | Voglio misurare qualcosa basandomi su dati pesati | RF: "Metriche e pesi **configurabili dall'admin**. Default suggerito: A (40%), B (60%)." |
+| "Ci sono 5 livelli: Cadetto, Pilota, Comandante, Ammiraglio, Leggenda" | Voglio una progressione a livelli con nomi evocativi | RF: "Numero **configurabile** di livelli con nome e soglia personalizzabili. Default: 5 livelli." |
+| "Ogni lunedì si genera il report settimanale" | Voglio report periodici | RF: "Frequenza **configurabile** (default: settimanale, lunedì)." |
 
 ### Il Test dell'Overfit
 
@@ -124,22 +123,15 @@ Per ogni requisito, chiediti:
 
 > "Se l'utente volesse cambiare questo valore/formula/comportamento domani, dovrebbe modificare il codice?"
 
-- Se SÌ → stai overfittando. Rendi configurabile.
-- Se NO → il requisito è correttamente astratto.
+- Se SI — stai overfittando. Rendi configurabile.
+- Se NO — il requisito è correttamente astratto.
 
 ### La Regola degli Esempi
 
 Quando l'utente dà un esempio concreto:
-1. **Cattura l'INTENZIONE** dietro l'esempio → diventa il requisito funzionale
-2. **Cattura i VALORI** dell'esempio → diventano i default configurabili
+1. **Cattura l'INTENZIONE** dietro l'esempio — diventa il requisito funzionale
+2. **Cattura i VALORI** dell'esempio — diventano i default configurabili
 3. **Mai hardcodare** l'esempio come unica possibilità
-
-Scrivi nel PROJECT_SPEC la struttura:
-```
-**Requisito:** [l'intenzione astratta]
-**Configurabile:** [cosa l'admin può cambiare]
-**Default:** [l'esempio concreto dell'utente come valore iniziale]
-```
 
 ---
 
@@ -212,6 +204,7 @@ Note: [eventuali preferenze espresse dall'utente]
 ## Strategia di Validazione
 Tipo: [Web App / API / Bot / CLI / VoIP / IoT]
 Scenari principali: [3-5 scenari derivati dai flussi utente del Livello 1]
+Metodo preferito: [Claude Preview / Playwright / httpx / custom]
 ```
 
 ## FASE 4: Genera PLAN.md
@@ -221,46 +214,51 @@ Scenari principali: [3-5 scenari derivati dai flussi utente del Livello 1]
 
 | # | Task | Dipende da | Complessità | Stato |
 |---|------|-----------|-------------|-------|
-| 1 | Setup progetto e dipendenze | - | S | ⬜ |
-| 2 | Schema database / modelli dati | 1 | M | ⬜ |
-| ... | ... | ... | ... | ⬜ |
-| N-1 | Review + Security audit | N-2 | M | ⬜ |
-| N | Validazione prodotto (validation-agent) | N-1 | L | ⬜ |
+| 1 | Setup progetto e dipendenze | - | S | Todo |
+| 2 | Schema database / modelli dati | 1 | M | Todo |
+| ... | ... | ... | ... | Todo |
+| N-2 | Review + Security audit (paralleli) | N-3 | M | Todo |
+| N-1 | Fix da review | N-2 | S | Todo |
+| N | Validazione prodotto (validation-agent) | N-1 | L | Todo |
 
 Legenda: S=Small(<1h), M=Medium(1-3h), L=Large(3-8h), XL=Extra(>8h)
-Stato: ⬜ Todo, 🔄 In Progress, ✅ Done, ⏭️ Skipped, 🔁 Retry
+Stato: Todo, In Progress, Done, Skipped, Retry
 ```
 
 L'ultimo task è SEMPRE la validazione del prodotto.
+Il penultimo blocco è SEMPRE review+security in parallelo.
 
 ## FASE 5: Struttura del Progetto e Docs
 
 Crea:
 ```
-.vibecoding                          ← marker (attiva hook)
-CLAUDE.md                            ← istruzioni Claude Code
-PROJECT_SPEC.md                      ← generato in Fase 3
-PLAN.md                              ← generato in Fase 4
-decisions.log                        ← vuoto
-docs/vibecoding/METHODOLOGY.md       ← da template
-docs/vibecoding/VALIDATION_STRATEGY.md ← specifica per tipo app
-docs/vibecoding/CONTEXT_RULES.md     ← da template
+.vibecoding                          <- marker (attiva hook)
+CLAUDE.md                            <- istruzioni Claude Code
+PROJECT_SPEC.md                      <- generato in Fase 3
+PLAN.md                              <- generato in Fase 4
+decisions.log                        <- vuoto
+docs/vibecoding/METHODOLOGY.md       <- da template
+docs/vibecoding/VALIDATION_STRATEGY.md <- specifica per tipo app
+docs/vibecoding/STATE_SNAPSHOT.md    <- template per snapshot stato
 ```
 
 Il CLAUDE.md deve includere:
 1. I vincoli di ecosistema dal Livello 2 come regole NON NEGOZIABILI
 2. Reference alla documentazione in docs/vibecoding/
 3. La regola anti-overfit: "i requisiti specificano intenzioni configurabili, non valori hardcodati"
+4. Istruzioni per usare auto-memory per decisioni architetturali significative
 
 ## FASE 6: Logga e Procedi
 
 Scrivi in `decisions.log`:
 ```
-[timestamp] INIT | Progetto inizializzato
+[timestamp] INIT | Progetto inizializzato con Vibecoding 2.1
 [timestamp] INIT | Vincoli ecosistema: [riassunto]
 [timestamp] INIT | Scelte tecniche autonome: [stack e motivazione]
 [timestamp] INIT | Assunzioni fatte: [cose non confermate dall'utente]
 ```
+
+Salva una project memory con tipo progetto, stack scelto, e vincoli chiave (usando il sistema auto-memory di Claude Code).
 
 Comunica all'utente:
 - Il PROJECT_SPEC generato

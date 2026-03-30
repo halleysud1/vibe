@@ -6,15 +6,15 @@
     "url": "https://github.com/halleysud"
   },
   "metadata": {
-    "description": "Vibecoding 2.0 — Sistema di sviluppo autonomo multi-agente con validazione del prodotto per Claude Code",
-    "version": "2.0.0"
+    "description": "Vibecoding 2.1 — Sistema di sviluppo autonomo multi-agente con esecuzione parallela, Claude Preview integration, compaction hooks, e validazione del prodotto per Claude Code",
+    "version": "2.1.0"
   },
   "plugins": [
     {
       "name": "vibecoding",
       "source": "./",
-      "description": "Trasforma Claude Code in un team di sviluppo completo che costruisce, testa, e verifica il software dal punto di vista dell'utente finale. Include 5 agenti specializzati, hooks deterministici, 4 comandi slash, e un Validation Agent che testa il prodotto come un utente reale.",
-      "version": "2.0.0",
+      "description": "Trasforma Claude Code in un team di sviluppo completo. Include 5 agenti specializzati con effort/isolation configurabili, hook intelligenti (prompt-based stop, compaction hooks), 5 comandi slash con review parallela, integrazione Claude Preview per validazione web, e quality gate deterministici.",
+      "version": "2.1.0",
       "author": {
         "name": "Gianluigi — Halley Sud SRL"
       },
@@ -24,9 +24,9 @@
         "multi-agent",
         "validation",
         "quality",
-        "tdd",
-        "testing",
-        "development-workflow"
+        "parallel",
+        "preview",
+        "compaction"
       ],
       "category": "development-workflow"
     }

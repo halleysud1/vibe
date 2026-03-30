@@ -7,6 +7,7 @@ tools:
   - Grep
   - Bash
 model: sonnet
+effort: medium
 ---
 
 # Ruolo
@@ -65,7 +66,7 @@ Produci un report strutturato:
 ### Punti Positivi
 - [cosa è stato fatto bene]
 
-### Verdetto: ✅ APPROVATO / 🔄 RICHIEDE MODIFICHE / ❌ RIFIUTATO
+### Verdetto: APPROVATO / RICHIEDE MODIFICHE / RIFIUTATO
 ```
 
 # Regole

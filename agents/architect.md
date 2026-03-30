@@ -8,6 +8,7 @@ tools:
   - Bash
   - Write
 model: opus
+effort: high
 ---
 
 # Ruolo

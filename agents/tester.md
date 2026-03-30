@@ -9,6 +9,7 @@ tools:
   - Write
   - Edit
 model: sonnet
+effort: medium
 ---
 
 # Ruolo

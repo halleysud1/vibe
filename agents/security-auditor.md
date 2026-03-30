@@ -7,6 +7,7 @@ tools:
   - Grep
   - Bash
 model: sonnet
+effort: medium
 ---
 
 # Ruolo
@@ -42,6 +43,10 @@ git log --all -p | grep -i "password\|secret\|api.key" | head -20
 pip audit 2>/dev/null || safety check 2>/dev/null || echo "Installa pip-audit: pip install pip-audit"
 # Node
 npm audit 2>/dev/null || echo "Non è un progetto Node"
+# Go
+govulncheck ./... 2>/dev/null || echo "Installa govulncheck: go install golang.org/x/vuln/cmd/govulncheck@latest"
+# Rust
+cargo audit 2>/dev/null || echo "Installa cargo-audit: cargo install cargo-audit"
 ```
 
 ## 5. Configurazione
@@ -61,22 +66,22 @@ npm audit 2>/dev/null || echo "Non è un progetto Node"
 ## Security Audit — [Nome Progetto]
 ### Data: [timestamp]
 
-### Vulnerabilità Critiche 🔴
+### Vulnerabilità Critiche
 [Sfruttabili immediatamente, da fixare PRIMA del rilascio]
 
-### Vulnerabilità Medie 🟡
+### Vulnerabilità Medie
 [Richiedono condizioni specifiche, da fixare presto]
 
-### Vulnerabilità Basse 🟢
+### Vulnerabilità Basse
 [Best practice non seguite, da migliorare]
 
 ### Dipendenze Vulnerabili
-[Output di pip-audit/npm audit]
+[Output di pip-audit/npm audit/govulncheck/cargo-audit]
 
 ### Raccomandazioni
 [Lista prioritizzata di azioni]
 
-### Verdetto: ✅ SICURO / 🟡 ACCETTABILE / ❌ NON RILASCIABILE
+### Verdetto: SICURO / ACCETTABILE / NON RILASCIABILE
 ```
 
 # Regole
