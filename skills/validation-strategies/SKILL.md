@@ -1,21 +1,24 @@
 ---
 name: validation-strategies
-description: "Guida completa alle strategie di validazione per ogni tipo di applicazione. Definisce COME il validation-agent deve testare il prodotto in base al tipo di software. Include Claude Preview come metodo preferito per web app."
+description: "Strategie di validazione per ogni tipo di applicazione — web app (Claude Preview o Playwright), REST API, bot, CLI, data pipeline, IoT. Definisce COME testare il prodotto dal punto di vista utente. Usala quando devi validare un modulo prima del rilascio o decidere quali scenari coprire in `/review`."
 ---
 
-# Strategie di Validazione — Per Tipo di Applicazione
+# validation-strategies — strategie di validazione per tipo di applicazione
 
-## Principio Fondamentale
+## Principio fondamentale
 
-**Il software non è finito quando compila e i test passano. È finito quando un utente può usarlo.**
+**Il software non è finito quando compila e i test passano. È finito quando un utente
+può usarlo.**
 
-La validazione non è testing. Il testing verifica il codice. La validazione verifica il prodotto. Ogni tipo di applicazione richiede una strategia diversa per "essere l'utente".
+La validazione non è testing. Il testing verifica il codice. La validazione verifica
+il prodotto. Ogni tipo di applicazione richiede una strategia diversa per "essere l'utente".
 
 ---
 
 ## 0. Web Application — Claude Preview (METODO PREFERITO)
 
-> **Novità 2.1**: Quando i tool MCP `preview_*` sono disponibili, usa quelli al posto di Playwright. Sono più veloci, integrati, e non richiedono dipendenze esterne.
+> Quando i tool MCP `preview_*` sono disponibili, usali al posto di Playwright.
+> Sono più veloci, integrati, e non richiedono dipendenze esterne.
 
 ### Prerequisiti
 - Tool MCP `preview_*` disponibili nella sessione
@@ -37,10 +40,10 @@ Se `.claude/launch.json` non esiste, crealo:
 }
 ```
 
-### Mapping Scenari -> Tool Preview
+### Mapping scenari → tool Preview
 
 | Scenario | Tool | Come verificare |
-|----------|------|----------------|
+|----------|------|-----------------|
 | Homepage carica | `preview_screenshot` | Pagina visibile, layout corretto |
 | Errori JavaScript | `preview_console_logs(level: "error")` | Nessun errore in console |
 | API funzionanti | `preview_network(filter: "failed")` | Nessuna richiesta fallita |
@@ -73,23 +76,23 @@ pip install playwright --break-system-packages && playwright install chromium
 npm install -D @playwright/test && npx playwright install chromium
 ```
 
-### Scenari Obbligatori
-1. **First Visit** — La homepage carica? Entro quanti secondi? Errori JS in console?
-2. **Registrazione** — L'utente può creare un account? Con dati invalidi cosa succede?
-3. **Login/Logout** — Il flusso di autenticazione funziona end-to-end?
-4. **Navigazione** — Tutte le pagine sono raggiungibili? I link funzionano?
-5. **Operazione Principale** — L'azione core dell'app funziona?
-6. **Responsiveness** — Il layout funziona su viewport mobile (375px) e desktop (1920px)?
-7. **Errori Utente** — Form vuoti, input invalidi, doppio submit — cosa succede?
-8. **Back/Refresh** — Il browser back button rompe qualcosa? Un refresh perde dati?
+### Scenari obbligatori
+1. **First Visit** — la homepage carica? Entro quanti secondi? Errori JS in console?
+2. **Registrazione** — l'utente può creare un account? Con dati invalidi cosa succede?
+3. **Login/Logout** — il flusso di autenticazione funziona end-to-end?
+4. **Navigazione** — tutte le pagine sono raggiungibili? I link funzionano?
+5. **Operazione principale** — l'azione core dell'app funziona?
+6. **Responsiveness** — il layout funziona su viewport mobile (375px) e desktop (1920px)?
+7. **Errori utente** — form vuoti, input invalidi, doppio submit — cosa succede?
+8. **Back/Refresh** — il browser back button rompe qualcosa? Un refresh perde dati?
 
-### Evidenze da Catturare
+### Evidenze da catturare
 - Screenshot ad ogni step (salva in `validation_screenshots/`)
 - Console log e errori JavaScript
 - Tempi di caricamento per pagina
 - Network errors (chiamate API fallite)
 
-### Template Script
+### Template script
 ```python
 # validation/validate_web.py
 from playwright.sync_api import sync_playwright
@@ -138,22 +141,22 @@ print(f"\nVALIDATION: {passed}/{total} scenarios passed")
 
 ### Strumenti
 - **httpx** (Python) o **fetch** (Node) — client HTTP
-- **jq** (bash) — per analisi rapida JSON
+- **jq** (bash) — analisi rapida JSON
 
-### Scenari Obbligatori
-1. **Health Check** — GET /health risponde 200?
-2. **Auth Flow** — Registrazione / Login / Token / Accesso protetto / Refresh / Logout
-3. **CRUD Completo** — Per ogni risorsa: Create / Read / Update / Delete / Verify Deleted
-4. **Input Invalido** — Ogni endpoint con body malformato, campi mancanti, tipi sbagliati
-5. **Auth Enforcement** — Endpoint protetto senza token 401? Con token sbagliato 403?
-6. **Idempotenza** — Creare due volte la stessa risorsa 409 o gestione corretta?
-7. **Paginazione** — Se l'API pagina, i parametri funzionano?
-8. **Persistenza** — Crea un dato, riavvia il server, il dato è ancora lì?
+### Scenari obbligatori
+1. **Health check** — GET /health risponde 200?
+2. **Auth flow** — registrazione / login / token / accesso protetto / refresh / logout
+3. **CRUD completo** — per ogni risorsa: Create / Read / Update / Delete / Verify Deleted
+4. **Input invalido** — ogni endpoint con body malformato, campi mancanti, tipi sbagliati
+5. **Auth enforcement** — endpoint protetto senza token 401? Con token sbagliato 403?
+6. **Idempotenza** — creare due volte la stessa risorsa: 409 o gestione corretta?
+7. **Paginazione** — se l'API pagina, i parametri funzionano?
+8. **Persistenza** — crea un dato, riavvia il server, il dato è ancora lì?
 
-### Template Script
+### Template script
 ```python
 # validation/validate_api.py
-import httpx, json, time
+import httpx, json
 
 BASE = "http://localhost:8000"
 results = {"scenarios": [], "performance": {}}
@@ -205,66 +208,72 @@ with open("validation_results.json", "w") as f:
 ## 3. Bot / Chatbot / Assistente
 
 ### Strumenti
-- **Client specifico per la piattaforma** (Telegram Bot API, Discord.py, WebSocket client)
-- **Conversation simulator** — script che invia messaggi e verifica risposte
+- Client specifico per la piattaforma (Telegram Bot API, Discord.py, WebSocket client)
+- Conversation simulator — script che invia messaggi e verifica risposte
 
-### Scenari Obbligatori
-1. **Greeting** — Il bot risponde al primo messaggio?
-2. **Comandi Base** — Ogni comando registrato funziona?
-3. **Conversazione Multi-Step** — Un flusso che richiede più messaggi sequenziali funziona?
-4. **Input Inatteso** — Emoji, messaggi vuoti, messaggi lunghissimi
-5. **Timeout** — Il bot risponde entro X secondi?
-6. **Stato** — Se il bot ha stato conversazionale, persiste correttamente?
+### Scenari obbligatori
+1. **Greeting** — il bot risponde al primo messaggio?
+2. **Comandi base** — ogni comando registrato funziona?
+3. **Conversazione multi-step** — un flusso che richiede più messaggi sequenziali funziona?
+4. **Input inatteso** — emoji, messaggi vuoti, messaggi lunghissimi
+5. **Timeout** — il bot risponde entro X secondi?
+6. **Stato** — se il bot ha stato conversazionale, persiste correttamente?
 
 ---
 
-## 4. CLI Tool
+## 4. CLI tool
 
-### Scenari Obbligatori
+### Scenari obbligatori
 1. **Help** — `--help` stampa un help leggibile?
 2. **Version** — `--version` mostra la versione?
-3. **Happy Path** — Il caso d'uso principale funziona?
-4. **Input Invalido** — File inesistente, formato sbagliato, permessi insufficienti
-5. **Exit Code** — 0 per successo, non-zero per errore?
-6. **Pipe** — Funziona con stdin/stdout per piping? (se applicabile)
-7. **Output Format** — JSON/CSV/testo è ben formattato?
+3. **Happy path** — il caso d'uso principale funziona?
+4. **Input invalido** — file inesistente, formato sbagliato, permessi insufficienti
+5. **Exit code** — 0 per successo, non-zero per errore?
+6. **Pipe** — funziona con stdin/stdout per piping? (se applicabile)
+7. **Output format** — JSON/CSV/testo è ben formattato?
 
 ---
 
-## 5. Data Pipeline / ETL
+## 5. Data pipeline / ETL
 
-### Scenari Obbligatori
-1. **Dati Validi** — Il dataset di test produce output corretto?
-2. **Dati Malformati** — Righe vuote, encoding errato, null inattesi
-3. **Idempotenza** — Eseguire la pipeline 2 volte produce lo stesso risultato?
-4. **Performance** — Quanto impiega su N record? Scala linearmente?
-5. **Recovery** — Se la pipeline crasha a metà, può riprendere?
+### Scenari obbligatori
+1. **Dati validi** — il dataset di test produce output corretto?
+2. **Dati malformati** — righe vuote, encoding errato, null inattesi
+3. **Idempotenza** — eseguire la pipeline 2 volte produce lo stesso risultato?
+4. **Performance** — quanto impiega su N record? Scala linearmente?
+5. **Recovery** — se la pipeline crasha a metà, può riprendere?
 
 ---
 
 ## 6. IoT / Embedded
 
-### Scenari Obbligatori
-1. **Connessione** — Il dispositivo (o mock) si connette al server?
-2. **Telemetria** — I dati vengono ricevuti e salvati correttamente?
-3. **Comandi** — Il server può inviare comandi al dispositivo?
-4. **Disconnessione** — Cosa succede quando il dispositivo va offline?
-5. **Riconnessione** — Il dispositivo si riconnette automaticamente?
+### Scenari obbligatori
+1. **Connessione** — il dispositivo (o mock) si connette al server?
+2. **Telemetria** — i dati vengono ricevuti e salvati correttamente?
+3. **Comandi** — il server può inviare comandi al dispositivo?
+4. **Disconnessione** — cosa succede quando il dispositivo va offline?
+5. **Riconnessione** — il dispositivo si riconnette automaticamente?
 
 ---
 
-## Come Scegliere la Strategia
+## Come scegliere la strategia
 
-Quando `/vibecoding:init` viene eseguito, determina il tipo di applicazione e scrivi in `docs/vibecoding/VALIDATION_STRATEGY.md`:
+Quando `/vibecoding:init` viene eseguito (o invochi `skill-bootstrap`), determina
+il tipo di applicazione e scrivi in `docs/VALIDATION_STRATEGY.md`:
 
 ```markdown
 # VALIDATION STRATEGY — [Nome Progetto]
 
-## Tipo Applicazione: [Web App / API / Bot / CLI / Pipeline / IoT]
-## Metodo Preferito: [Claude Preview / Playwright / httpx / custom]
-## Strategia: [dalla sezione corrispondente sopra]
+## Tipo applicazione
+[Web App / API / Bot / CLI / Pipeline / IoT]
 
-## Scenari Specifici
+## Metodo preferito
+[Claude Preview / Playwright / httpx / custom]
+
+## Strategia
+[dalla sezione corrispondente sopra]
+
+## Scenari specifici
 
 | # | Scenario | Descrizione | Priorità |
 |---|----------|-------------|----------|
@@ -272,9 +281,29 @@ Quando `/vibecoding:init` viene eseguito, determina il tipo di applicazione e sc
 | 2 | ... | ... | Alta |
 | 3 | ... | ... | Media |
 
-## Strumenti Necessari
+## Strumenti necessari
 [Lista dipendenze da installare per la validazione]
 
-## Come Avviare il Prodotto per la Validazione
+## Come avviare il prodotto per la validazione
 [Comandi per avviare il server/servizio in locale]
 ```
+
+---
+
+## Anti-pattern
+
+### A1. Validare solo i test unitari
+I test unitari verificano singole funzioni. La validazione verifica il **prodotto
+completo** dal punto di vista utente. Sono complementari, non sostituibili.
+
+### A2. Strategia generica per tutti i progetti
+Una web app si valida diversamente da una CLI o da un bot. Scegli la strategia
+giusta dal mapping sopra, non improvvisare.
+
+### A3. Saltare la validazione "perché c'è poco tempo"
+Se non c'è tempo per validare, non c'è tempo per rilasciare. Riduci lo scope, non
+saltare la validazione.
+
+### A4. Confondere "deployato" con "validato"
+Il fatto che l'app sia online non significa che funzioni per l'utente. La validazione
+prova le sequenze di azioni reali.

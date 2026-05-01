@@ -1,0 +1,165 @@
+"""Bot Telegram in modalità polling per {{ identity.name }}.
+
+Riceve messaggi da Telegram via getUpdates (polling), li forwarda all'AgentOS
+HTTP API (POST /teams/{team_id}/runs), riceve la risposta e la rimanda all'utente.
+
+Vantaggio: non richiede URL pubblico (no ngrok/cloudflared). Funziona da localhost.
+Svantaggio: ogni messaggio fa due hop (Telegram → bot → AgentOS).
+
+Usage:
+    # 1. AgentOS server attivo (es. python -m agent.main)
+    # 2. In altro terminale:
+    python -m agent.interfaces.telegram_polling
+
+Env richiesto:
+    TELEGRAM_BOT_TOKEN     (obbligatorio)
+    AGENTOS_HOST           (default: localhost)
+    AGENTOS_PORT           (default: 7777)
+    TELEGRAM_TEAM_ID       (default: derivato da identity.name del manifesto)
+    TELEGRAM_ALLOWED_USERS (opzionale, comma-separated user_id Telegram)
+"""
+
+from __future__ import annotations
+import os
+import sys
+import logging
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+import requests
+import telebot
+from dotenv import load_dotenv
+
+load_dotenv()
+
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(message)s")
+log = logging.getLogger("telegram_polling")
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+HOST = os.getenv("AGENTOS_HOST", "localhost")
+PORT = os.getenv("AGENTOS_PORT", "7777")
+AGENTOS_URL = os.getenv("AGENTOS_URL", f"http://{HOST}:{PORT}")
+TEAM_ID = os.getenv("TELEGRAM_TEAM_ID", "{{ identity.name | lower | replace(' ', '-') }}")
+ALLOWED_USERS = {
+    int(x) for x in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",")
+    if x.strip().isdigit()
+}
+
+if not TOKEN:
+    sys.exit("ERRORE: TELEGRAM_BOT_TOKEN non settato in .env")
+
+
+def is_allowed(user_id: int) -> bool:
+    """Se ALLOWED_USERS è vuoto, accetta tutti. Altrimenti solo whitelist."""
+    return not ALLOWED_USERS or user_id in ALLOWED_USERS
+
+
+def query_agentos(message: str, session_id: str, timeout: int = 300) -> tuple[bool, str]:
+    """Chiama POST /teams/{team_id}/runs. Ritorna (success, content)."""
+    try:
+        resp = requests.post(
+            f"{AGENTOS_URL}/teams/{TEAM_ID}/runs",
+            files={
+                "message": (None, message),
+                "stream": (None, "false"),
+                "monitor": (None, "false"),
+                "session_id": (None, session_id),
+            },
+            timeout=timeout,
+        )
+    except requests.RequestException as e:
+        return False, f"AgentOS irraggiungibile: {e}"
+    if resp.status_code != 200:
+        return False, f"AgentOS HTTP {resp.status_code}: {resp.text[:300]}"
+    try:
+        data = resp.json()
+    except ValueError:
+        return False, f"Risposta non-JSON: {resp.text[:300]}"
+    return True, data.get("content", "(risposta vuota)")
+
+
+def split_for_telegram(text: str, limit: int = 4000) -> list[str]:
+    """Telegram limita a 4096 char; lasciamo margine per markdown."""
+    if len(text) <= limit:
+        return [text]
+    chunks, cur = [], ""
+    for line in text.split("\n"):
+        if len(cur) + len(line) + 1 > limit:
+            chunks.append(cur)
+            cur = line
+        else:
+            cur = (cur + "\n" + line) if cur else line
+    if cur:
+        chunks.append(cur)
+    return chunks
+
+
+bot = telebot.TeleBot(TOKEN)
+
+
+@bot.message_handler(commands=["start"])
+def cmd_start(msg):
+    if not is_allowed(msg.from_user.id):
+        bot.reply_to(msg, "Accesso non autorizzato.")
+        return
+    bot.reply_to(msg, (
+        "Ciao! Sono {{ identity.name }}. {{ identity.role }} "
+        "Scrivi una richiesta per iniziare. /new resetta la conversazione."
+    ))
+
+
+@bot.message_handler(commands=["new"])
+def cmd_new(msg):
+    if not is_allowed(msg.from_user.id):
+        return
+    bot.reply_to(msg, "Nuova conversazione. La memoria precedente non sarà più caricata.")
+
+
+@bot.message_handler(commands=["help"])
+def cmd_help(msg):
+    if not is_allowed(msg.from_user.id):
+        return
+    bot.reply_to(msg, (
+        "Comandi:\n"
+        "/start — saluto + descrizione agente\n"
+        "/new — nuova conversazione (reset memoria)\n"
+        "/help — questo messaggio\n\n"
+        "Scrivi qualsiasi richiesta, l'agente la elabora."
+    ))
+
+
+@bot.message_handler(func=lambda m: True, content_types=["text"])
+def handle_text(msg):
+    user_id = msg.from_user.id
+    if not is_allowed(user_id):
+        bot.reply_to(msg, "Accesso non autorizzato.")
+        return
+
+    session_id = f"telegram_{user_id}"
+    log.info(f"[user {user_id}] {msg.text[:80]}")
+
+    bot.send_chat_action(msg.chat.id, "typing")
+    ok, content = query_agentos(msg.text, session_id)
+    if not ok:
+        bot.reply_to(msg, f"⚠️ {content}")
+        log.error(f"[user {user_id}] {content}")
+        return
+
+    for chunk in split_for_telegram(content):
+        bot.reply_to(msg, chunk)
+    log.info(f"[user {user_id}] response sent ({len(content)} chars)")
+
+
+def main():
+    me = bot.get_me()
+    print(f"\n[bot] @{me.username} online")
+    print(f"[bot] AgentOS: {AGENTOS_URL}")
+    print(f"[bot] team: {TEAM_ID}")
+    print(f"[bot] whitelist: {sorted(ALLOWED_USERS) if ALLOWED_USERS else 'TUTTI (nessuna restrizione)'}")
+    print(f"[bot] CTRL+C per fermare\n")
+    bot.infinity_polling(timeout=20, long_polling_timeout=20)
+
+
+if __name__ == "__main__":
+    main()

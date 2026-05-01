@@ -3,30 +3,30 @@
   "owner": {
     "name": "Halley Sud SRL",
     "email": "info@halleysud.it",
-    "url": "https://github.com/halleysud"
+    "url": "https://github.com/halleysud1"
   },
   "metadata": {
-    "description": "Vibecoding 2.1 — Sistema di sviluppo autonomo multi-agente con esecuzione parallela, Claude Preview integration, compaction hooks, e validazione del prodotto per Claude Code",
-    "version": "2.1.0"
+    "description": "Vibecoding 3.0 — Toolkit di skill per spec-driven development con Claude Code: filosofia 3-livelli, routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili change-request e agentify",
+    "version": "3.0.0"
   },
   "plugins": [
     {
       "name": "vibecoding",
       "source": "./",
-      "description": "Trasforma Claude Code in un team di sviluppo completo. Include 5 agenti specializzati con effort/isolation configurabili, hook intelligenti (prompt-based stop, compaction hooks), 5 comandi slash con review parallela, integrazione Claude Preview per validazione web, e quality gate deterministici.",
-      "version": "2.1.0",
+      "description": "Toolkit di skill per spec-driven development. Include 5 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude.",
+      "version": "3.0.0",
       "author": {
         "name": "Gianluigi — Halley Sud SRL"
       },
       "keywords": [
         "vibecoding",
-        "autonomous",
-        "multi-agent",
-        "validation",
-        "quality",
-        "parallel",
-        "preview",
-        "compaction"
+        "spec-driven-development",
+        "sdd",
+        "skills",
+        "methodology",
+        "change-request",
+        "agentify",
+        "claude-code"
       ],
       "category": "development-workflow"
     }

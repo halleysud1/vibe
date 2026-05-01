@@ -1,0 +1,137 @@
+"""Bench A/B testing per i modelli candidati di ogni ruolo.
+
+Per ogni ruolo del manifesto, scorre la lista `candidates`, istanzia un Agent
+con quel modello + un task fisso di benchmark, e misura latenza + lunghezza
+risposta. La qualità richiede review umana sui contenuti.
+
+Usage:
+    python -m agent.tests.bench_models --role <role>
+    python -m agent.tests.bench_models --role all --save bench.json
+"""
+
+from __future__ import annotations
+import argparse
+import asyncio
+import json
+import time
+from dataclasses import dataclass, asdict
+from pathlib import Path
+
+import yaml
+
+from agent._models import resolve_model
+from agno.agent import Agent
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+MANIFEST_PATH = PROJECT_ROOT / "agent" / "agent.yaml"
+
+
+# Task di benchmark per ruolo (input fisso per fare confronti fair).
+# TODO durante scaffolding: customizza ogni task per il dominio specifico.
+BENCHMARK_TASKS = {
+    {% for role_name in models.roles.keys() %}"{{ role_name }}": (
+        "TODO: task benchmark per ruolo {{ role_name }}. "
+        "Deve essere un input rappresentativo del lavoro reale che farà questo ruolo."
+    ),
+    {% endfor %}
+}
+
+
+@dataclass
+class BenchResult:
+    role: str
+    model_id: str
+    task: str
+    latency_seconds: float
+    response: str
+    error: str = ""
+
+
+def load_manifest() -> dict:
+    with open(MANIFEST_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+async def run_one(role: str, model_id: str, task: str) -> BenchResult:
+    try:
+        model = resolve_model(model_id)
+    except (ValueError, ImportError) as e:
+        return BenchResult(role, model_id, task, 0.0, "", error=str(e))
+
+    agent = Agent(
+        name=f"{role}-bench",
+        model=model,
+        instructions=f"Sei l'agente {role} per il bench. Rispondi in modo conciso, max 200 parole.",
+    )
+    t0 = time.time()
+    try:
+        response = await agent.arun(task)
+        return BenchResult(role, model_id, task, time.time() - t0, str(response))
+    except Exception as e:
+        return BenchResult(role, model_id, task, time.time() - t0, "", error=str(e))
+
+
+async def bench_role(role: str, task: str | None = None) -> list[BenchResult]:
+    manifest = load_manifest()
+    role_cfg = manifest["models"]["roles"].get(role)
+    if role_cfg is None:
+        raise ValueError(
+            f"Ruolo '{role}' non in manifest. Disponibili: {list(manifest['models']['roles'])}"
+        )
+
+    task = task or BENCHMARK_TASKS.get(role, "Task generico di test.")
+    candidates = role_cfg["candidates"]
+
+    print(f"\n=== Bench role: {role} ({len(candidates)} candidati) ===")
+    print(f"Task: {task[:120]}...\n")
+
+    results = []
+    for model_id in candidates:
+        print(f"  -> {model_id}...", end=" ", flush=True)
+        r = await run_one(role, model_id, task)
+        if r.error:
+            print(f"ERROR: {r.error[:60]}")
+        else:
+            print(f"{r.latency_seconds:.1f}s · {len(r.response)} chars")
+        results.append(r)
+    return results
+
+
+def print_table(results: list[BenchResult]):
+    print(f"\n{'Model':<28} {'Latency':>10} {'Chars':>8}  Status")
+    print("-" * 60)
+    for r in results:
+        status = "OK" if not r.error else f"ERR ({r.error[:25]})"
+        print(f"{r.model_id:<28} {r.latency_seconds:>9.1f}s {len(r.response):>8}  {status}")
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--role", default="{{ models.roles.keys() | list | first }}",
+                        choices=list(BENCHMARK_TASKS) + ["all"])
+    parser.add_argument("--task", default=None)
+    parser.add_argument("--save", default=None)
+    args = parser.parse_args()
+
+    if args.role == "all":
+        all_results = {}
+        for role in BENCHMARK_TASKS:
+            results = asyncio.run(bench_role(role, args.task))
+            print_table(results)
+            all_results[role] = [asdict(r) for r in results]
+        if args.save:
+            Path(args.save).write_text(
+                json.dumps(all_results, indent=2, ensure_ascii=False), encoding="utf-8"
+            )
+    else:
+        results = asyncio.run(bench_role(args.role, args.task))
+        print_table(results)
+        if args.save:
+            Path(args.save).write_text(
+                json.dumps([asdict(r) for r in results], indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+
+
+if __name__ == "__main__":
+    main()

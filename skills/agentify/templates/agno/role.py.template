@@ -1,0 +1,34 @@
+"""{{ role_name | capitalize }} role: {{ role_cfg.description }}"""
+
+from agno.agent import Agent
+from agent._models import resolve_model
+
+
+{{ role_name | upper }}_INSTRUCTIONS = """
+## Ruolo: {{ role_name | capitalize }}
+
+{{ role_cfg.description }}
+
+### Compito
+
+# TODO durante scaffolding: descrivere il compito specifico al ruolo,
+# le regole di esecuzione, i vincoli di output. Lascia spazio per:
+# - input atteso (cosa riceve dall'orchestrator)
+# - elaborazione richiesta
+# - output atteso (formato, lunghezza, dove viene salvato)
+# - vincoli inviolabili (formato, contenuto, tono)
+
+### Vincoli
+
+# TODO: lista vincoli specifici al ruolo (mai fare X, sempre fare Y).
+"""
+
+
+def build_{{ role_name }}(cfg: dict, base_instructions: str, common_tools: list) -> Agent:
+    return Agent(
+        name="{{ role_name | capitalize }}",
+        role=cfg["description"],
+        model=resolve_model(cfg["default"]),
+        instructions=base_instructions + "\n\n" + {{ role_name | upper }}_INSTRUCTIONS,
+        tools=common_tools,
+    )

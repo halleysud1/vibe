@@ -1,59 +1,35 @@
 {
   "name": "vibecoding",
-  "version": "2.1.0",
-  "description": "Sistema di sviluppo autonomo multi-agente con validazione del prodotto, esecuzione parallela, e integrazione Claude Preview. Trasforma Claude Code in un team di sviluppo completo con quality gate deterministici e hook intelligenti.",
+  "version": "3.0.0",
+  "description": "Toolkit di skill per spec-driven development con Claude Code. Filosofia 3-livelli (business/ecosistema/tecnico), routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili per change-request e agentify, bootstrap di nuovi progetti.",
   "author": {
     "name": "Gianluigi — Halley Sud SRL",
-    "url": "https://github.com/halleysud"
+    "url": "https://github.com/halleysud1"
   },
-  "homepage": "https://github.com/halleysud/vibecoding",
-  "repository": "https://github.com/halleysud/vibecoding",
+  "homepage": "https://github.com/halleysud1/vibe",
+  "repository": "https://github.com/halleysud1/vibe",
   "license": "MIT",
   "keywords": [
     "vibecoding",
-    "autonomous",
-    "multi-agent",
+    "spec-driven-development",
+    "sdd",
+    "skills",
+    "methodology",
+    "change-request",
+    "agentify",
+    "bootstrap",
+    "anti-overfit",
     "validation",
-    "quality",
-    "tdd",
-    "testing",
-    "development-workflow",
-    "product-validation",
-    "code-review",
-    "security-audit",
-    "parallel",
-    "preview",
-    "compaction"
+    "claude-code"
   ],
   "commands": [
-    "./commands/init.md",
-    "./commands/validate.md",
-    "./commands/status.md",
-    "./commands/review.md",
-    "./commands/plan.md"
+    "./commands/init.md"
   ],
   "skills": [
-    "./skills/methodology.md",
-    "./skills/validation-strategies.md",
-    "./skills/quality-system.md",
-    "./skills/parallel-execution.md"
-  ],
-  "hooks": "./hooks/hooks.json",
-  "userConfig": {
-    "qualityScoreTarget": {
-      "type": "number",
-      "default": 70,
-      "description": "Punteggio qualità minimo per considerare il progetto completato (0-100)"
-    },
-    "validationPassThreshold": {
-      "type": "number",
-      "default": 80,
-      "description": "Percentuale minima di scenari di validazione che devono passare"
-    },
-    "autoLintLanguages": {
-      "type": "string",
-      "default": "py,js,ts,jsx,tsx,go,rs",
-      "description": "Linguaggi per auto-lint dopo scrittura file (separati da virgola)"
-    }
-  }
+    "./skills/methodology/SKILL.md",
+    "./skills/validation-strategies/SKILL.md",
+    "./skills/change-request/SKILL.md",
+    "./skills/agentify/SKILL.md",
+    "./skills/skill-bootstrap/SKILL.md"
+  ]
 }

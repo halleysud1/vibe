@@ -1,0 +1,76 @@
+"""Skill loader.
+
+Reads Agent Skills format (open standard, adottato da Claude/Codex/Antigravity/Cursor):
+- Each skill is a directory under .claude/skills/<skill-name>/
+- Contains a SKILL.md file with YAML frontmatter (name, description) + markdown body
+- Provides progressive disclosure: descriptions injected at startup, full body loaded on demand
+
+NOTA: questo file è generico — non contiene placeholder. Copialo as-is nel target.
+"""
+
+from __future__ import annotations
+from dataclasses import dataclass
+from pathlib import Path
+import re
+import yaml
+
+
+@dataclass
+class Skill:
+    name: str
+    description: str
+    body: str
+    path: Path
+
+
+def parse_skill_md(path: Path) -> Skill | None:
+    text = path.read_text(encoding="utf-8")
+    m = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", text, re.DOTALL)
+    if not m:
+        return None
+    front = yaml.safe_load(m.group(1))
+    body = m.group(2).strip()
+    if not isinstance(front, dict) or "name" not in front:
+        return None
+    return Skill(
+        name=front["name"],
+        description=front.get("description", ""),
+        body=body,
+        path=path,
+    )
+
+
+def load_skills(skills_dir: str | Path = ".claude/skills") -> dict[str, Skill]:
+    base = Path(skills_dir)
+    skills: dict[str, Skill] = {}
+    if not base.exists():
+        return skills
+    for skill_md in base.glob("*/SKILL.md"):
+        skill = parse_skill_md(skill_md)
+        if skill is not None:
+            skills[skill.name] = skill
+    return skills
+
+
+def skills_summary(skills: dict[str, Skill]) -> str:
+    if not skills:
+        return ""
+    lines = ["## Skill disponibili\n"]
+    for s in sorted(skills):
+        lines.append(f"- **{s}**: {skills[s].description}")
+    lines.append(
+        "\nQuando una richiesta matcha la descrizione di una skill, "
+        "usa lo strumento `get_skill_instructions(name)` per caricarne il corpo "
+        "completo e seguilo passo-passo."
+    )
+    return "\n".join(lines)
+
+
+def make_skill_tool(skills: dict[str, Skill]):
+    def get_skill_instructions(name: str) -> str:
+        """Returns the full instructions of the skill identified by `name`."""
+        if name not in skills:
+            available = ", ".join(sorted(skills))
+            return f"Skill '{name}' non trovata. Disponibili: {available}"
+        return skills[name].body
+    return get_skill_instructions

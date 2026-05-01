@@ -1,0 +1,78 @@
+# {{ identity.name }} — manifesto
+# Generato dalla skill agentify (v1)
+# Engine: {{ engine }}  |  Strategia modelli: {{ models.strategy }}
+
+identity:
+  name: "{{ identity.name }}"
+  role: "{{ identity.role }}"
+  scope: "{{ identity.scope }}"
+
+users:
+  primary: "{{ users.primary }}"
+  secondary: "{{ users.secondary }}"
+
+triggers:
+  {% if triggers.schedule %}schedule:
+    cron: "{{ triggers.schedule.cron }}"
+    description: "{{ triggers.schedule.description }}"
+  {% endif %}
+  {% if triggers.on_demand %}on_demand:
+    chat: "{{ triggers.on_demand.chat }}"
+  {% endif %}
+
+outputs:
+  {% for o in outputs %}- {{ o }}
+  {% endfor %}
+
+autonomy:
+  read:
+    {% for k, v in autonomy.read.items() %}{{ k }}: "{{ v }}"
+    {% endfor %}
+  write:
+    {% for k, v in autonomy.write.items() %}{{ k }}: {{ v }}
+    {% endfor %}
+
+memory:
+  {% for k, v in memory.items() %}{{ k }}:
+    {% for kk, vv in v.items() %}{{ kk }}: {{ vv }}
+    {% endfor %}
+  {% endfor %}
+
+boundaries_hard:
+  {% for b in boundaries_hard %}- "{{ b }}"
+  {% endfor %}
+
+audit_trail:
+  required: {{ audit_trail.required | lower }}
+  storage: {{ audit_trail.storage }}
+
+skills:
+  source: .claude/skills/
+  imported:
+    {% for s in skills.imported %}- {{ s }}
+    {% endfor %}
+
+mcp_servers:
+  {% for name, cfg in mcp_servers.items() %}{{ name }}:
+    command: "{{ cfg.command }}"
+    transport: {{ cfg.transport | default('stdio') }}
+  {% endfor %}
+
+models:
+  strategy: {{ models.strategy }}            # team | single
+  team_mode: {{ models.team_mode }}          # route | coordinate
+  roles:
+    {% for role_name, role_cfg in models.roles.items() %}{{ role_name }}:
+      description: "{{ role_cfg.description }}"
+      default: {{ role_cfg.default }}
+      candidates:
+        {% for c in role_cfg.candidates %}- {{ c }}
+        {% endfor %}
+      api_key_env: {{ role_cfg.api_key_env }}
+    {% endfor %}
+
+engine: {{ engine }}
+runtime: {{ runtime }}
+deployment:
+  default: {{ deployment.default }}
+  alternatives: {{ deployment.alternatives }}

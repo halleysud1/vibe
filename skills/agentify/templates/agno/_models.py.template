@@ -1,0 +1,28 @@
+"""Model factory: maps model id strings to Agno model instances.
+
+Recognized prefixes: claude-, gpt-, gemini-, deepseek-.
+
+NOTA: questo file è generico — non contiene placeholder. Copialo as-is nel target.
+"""
+
+from __future__ import annotations
+
+
+def resolve_model(model_id: str):
+    """Map a model id (e.g. 'claude-opus-4-7') to an Agno model instance."""
+    if model_id.startswith("claude-"):
+        from agno.models.anthropic import Claude
+        return Claude(id=model_id)
+    if model_id.startswith("gpt-"):
+        from agno.models.openai import OpenAIChat
+        return OpenAIChat(id=model_id)
+    if model_id.startswith("gemini-"):
+        from agno.models.google import Gemini
+        return Gemini(id=model_id)
+    if model_id.startswith("deepseek-"):
+        from agno.models.deepseek import DeepSeek
+        return DeepSeek(id=model_id)
+    raise ValueError(
+        f"Unknown model id: '{model_id}'. "
+        "Aggiungi un mapping in agent/_models.py per il provider corrispondente."
+    )

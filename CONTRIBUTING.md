@@ -39,38 +39,49 @@ Formato: `tipo: descrizione`
 | `refactor` | Refactoring senza cambio di comportamento |
 | `test` | Aggiunta o modifica test |
 
-## Struttura del plugin
+## Struttura del plugin (v3.0)
 
 ```
 .claude-plugin/     → Manifest e marketplace config
-commands/           → Comandi slash (/vibecoding:*)
-agents/             → Subagenti specializzati (file .md con frontmatter YAML)
-skills/             → Knowledge base (file .md con frontmatter YAML)
-hooks/              → Hook configuration (JSON)
-scripts/            → Script bash di supporto
+commands/           → Comandi slash (solo /vibecoding:init in v3.0)
+skills/             → Skill in cartelle dedicate (skills/<nome>/SKILL.md)
 templates/          → Template copiati nei progetti utente
+docs/               → Documentazione del plugin (es. migration guide)
 ```
 
-### Aggiungere un agente
-
-1. Crea `agents/nome-agente.md`
-2. Aggiungi frontmatter YAML con `name`, `description`, `tools`, `model`
-3. Scrivi il system prompt nel body markdown
-4. Verifica che la CI passi
+> **Nota**: in v3.0 sono stati rimossi `agents/`, `hooks/`, `scripts/` (a livello plugin)
+> perché coperti nativamente da Claude Code. Vedi `CHANGELOG.md` 3.0.0 e
+> `docs/MIGRATION_2.1_to_3.0.md`.
 
 ### Aggiungere una skill
 
-1. Crea `skills/nome-skill.md`
-2. Aggiungi frontmatter YAML con `name`, `description`
-3. Scrivi il contenuto della skill
-4. Verifica che la CI passi
+1. Crea cartella `skills/<nome-kebab>/`
+2. Crea `skills/<nome-kebab>/SKILL.md` con frontmatter YAML:
+   - `name`: kebab-case, uguale al nome cartella
+   - `description`: una frase azionabile (verbo + oggetto + trigger)
+3. Scrivi il body markdown con le sezioni standard (Quando usare / Regole / Esempi / Anti-pattern / Checklist)
+4. Aggiungi `./skills/<nome-kebab>/SKILL.md` a `.claude-plugin/plugin.json` sotto `skills`
+5. Verifica che la CI passi
 
-### Aggiungere un comando
+### Aggiungere uno script di supporto a una skill
 
-1. Crea `commands/nome-comando.md`
-2. Aggiungi frontmatter YAML con `name`, `description`
-3. Scrivi le istruzioni per Claude
-4. Registra il file in `.claude-plugin/plugin.json` sotto `commands`
+Se la skill richiede script Python o asset, aggiungili sotto la sua cartella:
+
+```
+skills/<nome>/
+├── SKILL.md
+├── scripts/
+│   └── helper.py
+└── templates/
+    └── output.template
+```
+
+Vedi `skills/agentify/` come esempio.
+
+### Modificare `/vibecoding:init`
+
+`commands/init.md` è il punto di ingresso. La logica di routing 3-vie è codificata
+nella skill `skill-bootstrap`: se modifichi il flusso, sincronizza entrambi.
 
 ## Code of Conduct
 

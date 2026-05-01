@@ -1,270 +1,320 @@
 ---
 name: init
-description: "Inizializza un nuovo progetto con il sistema Vibecoding 2.1. Intervista l'utente su dominio e vincoli, poi genera PROJECT_SPEC, PLAN, e struttura docs."
+description: "Inizializza un progetto vibecoding SDD: distingue modulo software vs cartella di lavorazione, intervista l'utente, instrada le desiderata in CLAUDE.md / PROJECT_SPEC / SKILL, scaffolda la struttura. Delega la logica di routing alla skill `skill-bootstrap`."
 ---
 
-# /vibecoding:init — Bootstrap Progetto
+# /vibecoding:init — Bootstrap progetto SDD
 
 ## Cosa devi fare
 
-Sei l'Orchestrator del sistema Vibecoding 2.1. L'utente sta inizializzando un nuovo progetto. Il tuo lavoro è **capire cosa vuole** prima di costruire qualsiasi cosa.
+L'utente sta inizializzando un progetto vibecoding (v3.0 — SDD toolkit). Il tuo
+lavoro è **capire cosa vuole prima di costruire**, e poi distribuire correttamente
+le sue desiderata in tre sedi:
+
+- `CLAUDE.md` — vincoli globali e istruzioni operative
+- `PROJECT_SPEC.md` — visione, utenti, requisiti funzionali
+- `.claude/skills/<nome>/SKILL.md` — regole operative riusabili
+
+> **Nota architetturale**: la logica di routing è codificata nella skill
+> [`skill-bootstrap`](../skills/skill-bootstrap/SKILL.md). Questo comando è
+> l'**entry point** che la richiama; per dettagli sulla classificazione delle
+> desiderata, leggi quella skill.
 
 ---
 
-## FASE 0: Rileva PROJECT_SPEC.md esistente
+## Quando lanciarlo
 
-**PRIMA DI TUTTO**, controlla se nella directory corrente esiste già un file `PROJECT_SPEC.md`.
+- A inizio sessione su un progetto vergine (nessun `CLAUDE.md`, nessun `PROJECT_SPEC.md`)
+- Quando l'utente vuole strutturare metodologicamente un progetto esistente
+- Quando l'utente apre una nuova **cartella di lavorazione Claude** (es. workspace
+  di analisi, automazione)
 
-### Se PROJECT_SPEC.md ESISTE:
-1. **Leggilo integralmente** con il tool Read
-2. **Analizza il contenuto** — verifica che contenga informazioni sufficienti su:
-   - Obiettivo del progetto e problema da risolvere
-   - Utenti target e flussi di lavoro
-   - Requisiti funzionali (anche se non nel formato Vibecoding)
-   - Eventuali vincoli tecnici o di ecosistema
-3. **Applica la diagnosi anti-overfit** (FASE 2) sui requisiti trovati
-4. **Riformatta se necessario** — se il file non è nel formato Vibecoding a 3 livelli, riscrivilo nel formato standard mantenendo TUTTE le informazioni originali. Non perdere nulla.
-5. **SALTA la FASE 1** (intervista) — le spec sono già fornite dall'utente
-6. **Procedi direttamente** alla FASE 3 (o FASE 4 se il PROJECT_SPEC è già completo)
-
-### Se PROJECT_SPEC.md NON ESISTE:
-Procedi normalmente con la FASE 1 (intervista interattiva).
-
-> **Logica:** Se l'utente ha preparato un PROJECT_SPEC.md prima di lanciare `/vibecoding:init`, significa che vuole un flusso fire-and-forget. Rispetta le sue spec e parti subito.
+Se il progetto ha già queste 3 sedi popolate, **non rilanciare init**: usa
+`/change-request` per evolvere o `skill-bootstrap` per aggiungere skill nuove.
 
 ---
 
-## FASE 1: Intervista (INTERATTIVA)
+## FASE 0 — Detect del contesto esistente
 
-> **Nota:** Questa fase viene SALTATA se un PROJECT_SPEC.md è già presente nella directory.
+Prima di tutto, controlla cosa c'è già:
 
-L'init NON è un comando fire-and-forget. Devi fare domande all'utente per raccogliere il contesto che non puoi inventare. Senza queste informazioni, qualsiasi cosa costruisci sarà sbagliata o troppo rigida.
+```bash
+ls CLAUDE.md PROJECT_SPEC.md PLAN.md docs/README.md .claude/skills 2>/dev/null
+```
 
-### 1A — Domande di Dominio di Business (Livello 1)
+| Stato rilevato | Cosa fare |
+|---|---|
+| Tutto vuoto | Procedi con FASE A (intervista completa) |
+| Esiste `PROJECT_SPEC.md` ma niente altro | Leggilo, riusa il contenuto, salta solo le domande L1 |
+| Esiste `CLAUDE.md` ma `PROJECT_SPEC.md` no | Riusa CLAUDE.md per L2, fai L1 e routing skill |
+| Esistono entrambi e ha skill | **Non rifare init**: suggerisci `/change-request` |
 
-Queste sono le domande più importanti. Le risposte dell'utente alimentano il Livello 1 del PROJECT_SPEC.
-
-**Obiettivo e contesto:**
-- Qual è il problema concreto che questo software deve risolvere?
-- Chi lo usa? Che competenze hanno? In che contesto lavorano?
-- Come risolvono questo problema OGGI (senza il software)?
-
-**Flussi di lavoro:**
-- Descrivi il flusso di lavoro tipico, dall'inizio alla fine
-- Ci sono casi particolari o eccezioni importanti?
-- Cosa succede quando qualcosa va storto nel processo?
-
-**Risultati attesi:**
-- Come fai a sapere se il software funziona? Qual è il "test" dal punto di vista dell'utente?
-- Quali sono le 3 cose che DEVE fare assolutamente? (il cuore del progetto)
-- Cosa sarebbe "nice to have" ma non essenziale per la prima versione?
-
-### 1B — Domande sui Vincoli di Ecosistema (Livello 2)
-
-Queste domande evitano che il modello faccia scelte brillanti ma incompatibili.
-
-**Infrastruttura:**
-- Su quali server/piattaforma girerà? (cloud, on-premise, specifico?)
-- C'è un database già in uso che devi utilizzare o con cui integrarti?
-- Ci sono vincoli di rete, firewall, proxy?
-
-**Integrazioni:**
-- Con quali sistemi esistenti deve comunicare? (API, database, file?)
-- Ci sono protocolli o formati dati obbligati?
-- C'è un sistema di autenticazione già in uso?
-
-**Convenzioni:**
-- Ci sono naming convention, pattern, o standard da rispettare?
-- C'è un progetto esistente simile di cui questo deve seguire le convenzioni?
-- Ci sono vincoli normativi? (GDPR, accessibilità, certificazioni)
-
-**Limitazioni:**
-- Ci sono limitazioni tecniche note? (browser, connettività, hardware)
-- C'è uno stack tecnologico obbligato per ragioni organizzative?
-
-### Come condurre l'intervista
-
-**REGOLE FONDAMENTALI:**
-
-1. **Fai le domande in blocchi tematici**, non tutte insieme. Massimo 3-5 domande per messaggio.
-
-2. **Adatta le domande al contesto.** Se l'utente ha già dato molte informazioni nel prompt iniziale, non rifare le domande a cui ha già risposto. Riconosci ciò che ha detto e chiedi solo ciò che manca.
-
-3. **Non chiedere cose che puoi decidere tu.** Le domande riguardano SOLO Livello 1 (business) e Livello 2 (vincoli). Mai chiedere "quale framework vuoi?" o "come strutturiamo il codice?" — quelle sono scelte tue (Livello 3).
-
-4. **Se l'utente risponde "non so" o "decidi tu"**, valuta:
-   - Se è una domanda di Livello 1 (business) — insisti gentilmente, perché DEVI saperlo
-   - Se è una domanda di Livello 2 (vincoli) — prendi nota che non c'è vincolo, sei libero
-   - Se per errore hai chiesto qualcosa di Livello 3 — scusati, è una tua scelta
-
-5. **Massimo 2-3 round di domande.** Non trasformare l'intervista in un interrogatorio. Se dopo 2 round mancano ancora informazioni, fai le migliori assunzioni possibili, documentale, e procedi.
-
-6. **Parti dal contesto che l'utente ti ha già dato.** Se nel prompt dice "voglio un'app per gestire i ticket", non chiedergli "cos'è un ticket?" — chiedigli cosa rende i SUOI ticket diversi da quelli standard.
+> Se l'utente ha preparato un `PROJECT_SPEC.md` prima di lanciare init, è un
+> segnale di volersi un flusso più rapido — riusa quel contenuto, fai solo le
+> domande mancanti.
 
 ---
 
-## FASE 2: Diagnosi Anti-Overfit
+## FASE A — Tipo di lavorazione
 
-Prima di scrivere il PROJECT_SPEC, applica questo controllo su ogni requisito raccolto.
+**Domanda obbligata** (se non è già chiaro dal contesto):
 
-### Il Problema dell'Overfitting delle Specifiche
+> *"Stai sviluppando un **modulo software** (codice di prodotto, stack, test) oppure
+> stai aprendo una **cartella di lavorazione Claude** (analisi, automazione,
+> documentazione, output non-codice)?"*
 
-Quando un utente descrive cosa vuole, spesso dà **esempi concreti** che sembrano **requisiti fissi**. Il tuo lavoro è distinguere tra:
+### Conseguenze
 
-| L'utente dice | Cosa intende davvero | Come specificarlo |
-|--------------|---------------------|-------------------|
-| "Il punteggio si calcola come media pesata tra A (40%) e B (60%)" | Voglio misurare qualcosa basandomi su dati pesati | RF: "Metriche e pesi **configurabili dall'admin**. Default suggerito: A (40%), B (60%)." |
-| "Ci sono 5 livelli: Cadetto, Pilota, Comandante, Ammiraglio, Leggenda" | Voglio una progressione a livelli con nomi evocativi | RF: "Numero **configurabile** di livelli con nome e soglia personalizzabili. Default: 5 livelli." |
-| "Ogni lunedì si genera il report settimanale" | Voglio report periodici | RF: "Frequenza **configurabile** (default: settimanale, lunedì)." |
+| Tipo | Template scaffold | Esempi |
+|---|---|---|
+| **Modulo** | `templates/modulo/` (CLAUDE, PROJECT_SPEC, PLAN, docs/ARCHITECTURE) | App web, libreria, microservizio |
+| **Cartella di lavorazione** | `templates/cartella/` (CLAUDE, PROJECT_SPEC, docs/README, docs/STATE_SNAPSHOT) | Workspace di analisi, integrazione tool, documentazione SDD |
 
-### Il Test dell'Overfit
-
-Per ogni requisito, chiediti:
-
-> "Se l'utente volesse cambiare questo valore/formula/comportamento domani, dovrebbe modificare il codice?"
-
-- Se SI — stai overfittando. Rendi configurabile.
-- Se NO — il requisito è correttamente astratto.
-
-### La Regola degli Esempi
-
-Quando l'utente dà un esempio concreto:
-1. **Cattura l'INTENZIONE** dietro l'esempio — diventa il requisito funzionale
-2. **Cattura i VALORI** dell'esempio — diventano i default configurabili
-3. **Mai hardcodare** l'esempio come unica possibilità
+Se ambiguo → **cartella di lavorazione** (più permissiva, l'utente aggiunge `src/` se serve).
 
 ---
 
-## FASE 3: Genera PROJECT_SPEC.md
+## FASE B — Intervista (raccolta libera)
 
-Ora hai le informazioni. Genera il PROJECT_SPEC con i tre livelli.
+L'intervista NON è fire-and-forget. Devi fare domande in **blocchi tematici** e
+adattarti al contesto già fornito.
 
-### Template
+### B1 — Dominio di business (Livello 1)
+
+- Qual è il problema concreto che questo progetto deve risolvere?
+- Chi userà l'output? Che competenze hanno? In che contesto?
+- Come risolvono questo problema oggi?
+- Quali sono le 3 cose che DEVE fare? Cosa è "nice to have"?
+
+### B2 — Vincoli di ecosistema (Livello 2)
+
+- Su quali server / piattaforma / OS gira?
+- Database obbligato? API o sistemi da integrare?
+- Convenzioni di naming / pattern dei progetti esistenti?
+- Vincoli normativi (GDPR, AGID, accessibilità)?
+- Stack tecnologico imposto da ragioni organizzative?
+
+### B3 — Regole operative ricorrenti
+
+> Questo blocco è **nuovo in v3.0**. Estrae le desiderata che diventeranno SKILL.
+
+- Ci sono regole operative che vuoi che applichi **ogni volta** che lavoro su
+  questo progetto? (Es: "ogni elemento core deve avere un'attività futura")
+- Ci sono procedure sequenziali ricorrenti? (Es: "quando produci un report PM,
+  segui sempre estrazione → analisi → scrittura")
+- Ci sono **boundary hard** — cose che NON devo MAI fare? (Es: "mai modificare
+  task in stato Done")
+- Ci sono classificazioni / tassonomie del tuo dominio? (Es: contratti =
+  Fornitura/Contratto/Informatizzazione)
+
+### Regole di conduzione
+
+1. **Massimo 2-3 round di domande**. Non trasformare l'intervista in interrogatorio.
+2. **Adatta al contesto**: se l'utente ha già detto X nel prompt, non rifare la domanda.
+3. **Mai chiedere scelte di Livello 3** (framework, struttura directory): lì decidi tu.
+4. **Risposte "non so"**: per L1 insisti gentilmente, per L2 prendi nota "nessun vincolo".
+
+---
+
+## FASE C — Routing 3-vie (cuore di v3.0)
+
+Classifica ogni informazione raccolta nelle 3 sedi corrette. Mostra all'utente la
+**classificazione proposta** e attendi conferma.
+
+### Tabella di routing
+
+| Tipo informazione | Va in | Esempio |
+|---|---|---|
+| Visione, problema, obiettivi | `PROJECT_SPEC.md` | "Analizzare performance tecnici" |
+| Profili utente, flussi di lavoro | `PROJECT_SPEC.md` | "Backoffice, no background tecnico" |
+| Requisiti funzionali (RF-NN) | `PROJECT_SPEC.md` | "Export PDF di ogni report" |
+| Stack obbligato, sistemi integrati | `CLAUDE.md` (vincoli L2) | "Odoo XML-RPC, NO Postgres" |
+| Vincoli ambiente, OS, normative | `CLAUDE.md` | "GDPR su CF dipendenti" |
+| Convenzioni naming, lingua, formati | `CLAUDE.md` | "Markdown italiano, codice inglese" |
+| Comandi tipici di lavoro | `CLAUDE.md` | "`python scripts/analisi.py`" |
+| **Regole operative ricorrenti** | `.claude/skills/<X>/SKILL.md` | "Ogni elemento core deve avere attività futura" |
+| **Procedure sequenziali per dominio** | `.claude/skills/<X>/SKILL.md` | "Estrai → analizza → scrivi" |
+| **Tassonomie / classificazioni** | `.claude/skills/<X>/SKILL.md` | Mapping tipi contratto |
+
+### Test discriminante CLAUDE.md vs SKILL.md
+
+- *"Si applica sempre, in ogni task del progetto?"* → CLAUDE.md
+- *"Si applica solo quando lavoro su un certo dominio operativo?"* → SKILL.md (con
+  description = quel dominio)
+
+### Output Fase C — formato proposto
 
 ```markdown
-# PROJECT_SPEC — [Nome Progetto]
+## Classificazione delle desiderata
+
+### Andranno in PROJECT_SPEC.md
+- Visione: [...]
+- Utenti: [...]
+- RF-01, RF-02, ...
+
+### Andranno in CLAUDE.md
+- Stack: [...]
+- Convenzioni: [...]
+- Comandi: [...]
+
+### Andranno come skill: `<nome-skill-1>`
+description proposta: "[verbo] [oggetto] quando [trigger]."
+- Regola: [...]
+- Regola: [...]
+
+### Andranno come skill: `<nome-skill-2>`
+...
+
+Confermi questa classificazione, o vuoi spostare qualcosa?
+```
+
+**Itera finché l'utente è d'accordo.** Non scrivere file senza approvazione.
 
 ---
 
-## LIVELLO 1 — Dominio di Business
-> Informazioni raccolte dall'intervista. Il modello NON può modificarle.
+## FASE D — Scrittura artefatti
 
-### Obiettivo
-[3-5 frasi: cosa fa, per chi, quale problema risolve]
+### D1. Scaffold della struttura
 
-### Utenti Target
-[Chi, competenze, contesto di lavoro]
+Copia `templates/modulo/` (modulo) o `templates/cartella/` (cartella) nella root.
 
-### Flussi Utente
-[Descrizione narrativa del lavoro reale, non delle schermate]
+### D2. Popola CLAUDE.md
 
-### Requisiti Funzionali
-Formato per ogni requisito:
-- **RF-XXX: [Titolo]**
-  - Requisito: [l'intenzione]
-  - Configurabile: [cosa può cambiare l'admin]
-  - Default: [valore iniziale suggerito dall'utente]
+Apri il template e riempi le sezioni con il contenuto classificato come "CLAUDE.md".
 
-### Requisiti Non Funzionali
-[Performance, volumi, SLA, disponibilità]
+### D3. Popola PROJECT_SPEC.md
 
----
+Idem per le sezioni di L1 (visione, utenti, RF, glossario).
 
-## LIVELLO 2 — Vincoli di Ecosistema
-> Fatti non negoziabili raccolti dall'intervista.
+Applica il **test anti-overfit** sui requisiti: ogni esempio concreto dell'utente
+diventa **default configurabile**, non hardcoded. Vedi skill `methodology` § Anti-overfit.
 
-### Infrastruttura
-[Server, OS, database, rete — solo ciò che l'utente ha confermato]
+### D4. Scrivi le SKILL operative
 
-### Sistemi da Integrare
-[API, database, servizi — con dettagli tecnici forniti dall'utente]
+Per ogni skill identificata in Fase C:
 
-### Convenzioni e Standard
-[Naming, pattern, protocolli — da ecosistema esistente]
+1. `mkdir -p .claude/skills/<nome>/`
+2. Copia `templates/skill-stub/SKILL.md` come base
+3. Frontmatter:
+   - `name`: kebab-case, uguale al nome cartella
+   - `description`: **una frase** azionabile — `"<verbo> <oggetto> quando <trigger>"`.
+     È il campo più importante: Claude lo usa per decidere quando attivare la skill.
+4. Body: sezioni standard (Quando usare / Regole operative / Esempi / Anti-pattern /
+   Checklist). Riempi con le desiderata raccolte.
 
-### Vincoli Normativi
-[GDPR, AGID, CAD, certificazioni]
+> **Riferimento**: la fase di writing è descritta in dettaglio nella skill
+> `skill-bootstrap` § Fase D.
 
-### Limitazioni Tecniche
-[Browser, connettività, hardware]
+### D5. PLAN.md (solo modulo)
 
-Se l'utente non ha indicato vincoli: "Nessun vincolo di ecosistema dichiarato. Il modello è libero nelle scelte tecniche."
+Se è un modulo, abbozza il `PLAN.md` con i task derivati dai RF di PROJECT_SPEC.
+Stato `⬜` per tutti, l'utente promuove a `🔄`.
 
----
+### D6. (opzionale) Strategia di validazione
 
-## LIVELLO 3 — Scelte Tecniche
-> Qui decide il modello. Nessun input dall'utente necessario.
-
-Stack scelto: [scelta del modello con motivazione in 1 riga]
-Approccio architetturale: [scelta del modello]
-Note: [eventuali preferenze espresse dall'utente]
+Per moduli, aggiungi `docs/VALIDATION_STRATEGY.md` scegliendo dalla skill
+`validation-strategies` la sezione corrispondente al tipo di app.
 
 ---
 
-## Strategia di Validazione
-Tipo: [Web App / API / Bot / CLI / VoIP / IoT]
-Scenari principali: [3-5 scenari derivati dai flussi utente del Livello 1]
-Metodo preferito: [Claude Preview / Playwright / httpx / custom]
+## FASE E — Verifica e consegna
+
+Mostra all'utente:
+
+1. **Sintesi degli artefatti generati** — lista file con path
+2. **Conferma routing** — quali regole sono andate dove
+3. **Open questions** se ci sono assunzioni non confermate
+
+Aggiungi a `decisions.log` (se esiste o se vuoi crearlo):
+
+```
+2026-MM-DD / init / Progetto inizializzato con vibecoding v3.0.
+Tipo: <modulo|cartella>. Skill scritte: <nome1>, <nome2>.
+Vincoli L2 chiave: <riassunto>.
 ```
 
-## FASE 4: Genera PLAN.md
+Salva una **project memory** (auto-memory) con: tipo progetto, stack/vincoli chiave,
+skill attive. Crea continuità tra sessioni.
 
-```markdown
-# PLAN — [Nome Progetto]
+---
 
-| # | Task | Dipende da | Complessità | Stato |
-|---|------|-----------|-------------|-------|
-| 1 | Setup progetto e dipendenze | - | S | Todo |
-| 2 | Schema database / modelli dati | 1 | M | Todo |
-| ... | ... | ... | ... | Todo |
-| N-2 | Review + Security audit (paralleli) | N-3 | M | Todo |
-| N-1 | Fix da review | N-2 | S | Todo |
-| N | Validazione prodotto (validation-agent) | N-1 | L | Todo |
+## Esempio di sessione (cartella di lavorazione)
 
-Legenda: S=Small(<1h), M=Medium(1-3h), L=Large(3-8h), XL=Extra(>8h)
-Stato: Todo, In Progress, Done, Skipped, Retry
+> **Utente**: `/vibecoding:init`. Voglio aprire una cartella per analizzare le
+> performance dei project manager Halley Sud. Dati da Odoo XML-RPC. Output:
+> report markdown per il direttore commerciale. Ogni progetto va classificato
+> per tipo (Fornitura/Contratto/Informatizzazione) prima dell'analisi.
+
+**Tu**:
+
+```
+FASE A: cartella di lavorazione (output = report, no app).
+
+Domande mancanti (FASE B):
+- Il direttore commerciale è il solo lettore o ce ne sono altri?
+- Vuoi un report per ogni PM o un report aggregato?
+- C'è una cadenza? (settimanale / mensile / on-demand)
+
+FASE C — Classificazione proposta:
+
+PROJECT_SPEC.md:
+- Visione: analizzare performance dei PM di Halley Sud
+- Utenti: direttore commerciale (lettore non tecnico)
+- RF-01: report markdown per ogni PM
+- RF-02: confronto cross-PM
+- Fonte dati: Odoo XML-RPC
+
+CLAUDE.md:
+- Stack: Odoo XML-RPC come fonte
+- Convenzioni: report markdown italiano, codice inglese
+
+Skill: `analisi-pm`
+description: "Analizza i progetti dei project manager Halley Sud su Odoo,
+classifica per tipo (Fornitura/Contratto/Informatizzazione) e produce
+report markdown comparativi."
+- Regola: classifica progetti prima di analizzare
+- Regola: mappa tipi: Fornitura=purchase_order, Contratto=contract,
+  Informatizzazione=agreement
+
+Confermi? Manca qualcosa?
 ```
 
-L'ultimo task è SEMPRE la validazione del prodotto.
-Il penultimo blocco è SEMPRE review+security in parallelo.
+Dopo OK → FASE D scrive i 3 artefatti.
 
-## FASE 5: Struttura del Progetto e Docs
+---
 
-Crea:
-```
-.vibecoding                          <- marker (attiva hook)
-CLAUDE.md                            <- istruzioni Claude Code
-PROJECT_SPEC.md                      <- generato in Fase 3
-PLAN.md                              <- generato in Fase 4
-decisions.log                        <- vuoto
-docs/vibecoding/METHODOLOGY.md       <- da template
-docs/vibecoding/VALIDATION_STRATEGY.md <- specifica per tipo app
-docs/vibecoding/STATE_SNAPSHOT.md    <- template per snapshot stato
-```
+## Anti-pattern
 
-Il CLAUDE.md deve includere:
-1. I vincoli di ecosistema dal Livello 2 come regole NON NEGOZIABILI
-2. Reference alla documentazione in docs/vibecoding/
-3. La regola anti-overfit: "i requisiti specificano intenzioni configurabili, non valori hardcodati"
-4. Istruzioni per usare auto-memory per decisioni architetturali significative
+### A1. Skip della Fase C
+Se scrivi tutto in CLAUDE.md o tutto in PROJECT_SPEC, perdi il vantaggio delle
+skill (progressive disclosure, attivazione contestuale).
 
-## FASE 6: Logga e Procedi
+### A2. Inventare regole non dette
+Se l'utente non ha detto una regola, non aggiungerla "perché sembra utile". Le
+skill devono riflettere le **sue** desiderata.
 
-Scrivi in `decisions.log`:
-```
-[timestamp] INIT | Progetto inizializzato con Vibecoding 2.1
-[timestamp] INIT | Vincoli ecosistema: [riassunto]
-[timestamp] INIT | Scelte tecniche autonome: [stack e motivazione]
-[timestamp] INIT | Assunzioni fatte: [cose non confermate dall'utente]
-```
+### A3. Skill troppo grosse
+Se una skill ha 5+ regole eterogenee, splitala. Una skill = un dominio operativo coerente.
 
-Salva una project memory con tipo progetto, stack scelto, e vincoli chiave (usando il sistema auto-memory di Claude Code).
+### A4. Description di skill generica
+`description: "Helper per il progetto"` non si attiverà mai. Sempre verbo + oggetto + trigger.
 
-Comunica all'utente:
-- Il PROJECT_SPEC generato
-- I vincoli che hai recepito (per conferma)
-- Le assunzioni che hai fatto
-- Le scelte tecniche e perché
-- Chiedi: "Il PROJECT_SPEC riflette correttamente la realtà?"
+### A5. Saltare la conferma utente in Fase C
+La classificazione è il pezzo che l'utente vuole correggere. Non scrivere file
+senza il suo OK.
 
-**Questo è l'UNICO momento di approvazione.** Dopo la conferma, non ti fermi più.
+---
+
+## Checklist auto-verifica
+
+Prima di chiudere init:
+
+1. Ho chiesto FASE A (modulo vs cartella)?
+2. Ho fatto un'intervista mirata e mostrato la classificazione di FASE C?
+3. L'utente ha approvato il routing prima di scrivere file?
+4. Ogni skill scritta ha description actionable e body con regole concrete?
+5. CLAUDE.md non duplica regole già nelle skill?
+6. PROJECT_SPEC ha applicato anti-overfit sugli esempi numerici?
+7. Ho aggiornato `decisions.log` e/o auto-memory?
+
+Se anche solo una risposta è "no", torna indietro.

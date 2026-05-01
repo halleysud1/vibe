@@ -1,0 +1,120 @@
+"""{{ identity.name }} — entry point.
+
+Loads agent.yaml manifesto, instantiates {{ models.roles | length - 1 }} specialist agents
+({% for r in models.roles.keys() %}{% if r != 'orchestrator' %}{{ r }}{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}),
+wraps them in an Agno Team con Orchestrator come team leader, espone via AgentOS
+(chat UI + sessions + scheduler + traces).
+
+Usage:
+    python -m agent.main
+
+NOTE: l'API esatta di Agno (import paths, signature di AgentOS) può variare con le
+versioni. Se l'avvio fallisce, vedi runbook.md per fix comuni.
+"""
+
+from __future__ import annotations
+import os
+from pathlib import Path
+import yaml
+from dotenv import load_dotenv
+
+load_dotenv()
+
+from agno.agent import Agent
+from agno.team import Team
+from agno.os import AgentOS
+from agno.tools.mcp import MCPTools
+
+from agent.skill_loader import load_skills, skills_summary, make_skill_tool
+from agent._models import resolve_model
+from agent.roles.orchestrator import ORCHESTRATOR_INSTRUCTIONS
+{% for r in models.roles.keys() %}{% if r != 'orchestrator' %}from agent.roles.{{ r }} import build_{{ r }}
+{% endif %}{% endfor %}
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MANIFEST_PATH = PROJECT_ROOT / "agent" / "agent.yaml"
+SYSTEM_PROMPT_PATH = PROJECT_ROOT / "agent" / "agent_system_prompt.md"
+SKILLS_DIR = PROJECT_ROOT / ".claude" / "skills"
+
+
+def load_manifest() -> dict:
+    with open(MANIFEST_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def build_team() -> Team:
+    """Assemble the team with Orchestrator as team leader."""
+    manifest = load_manifest()
+    base_prompt = SYSTEM_PROMPT_PATH.read_text(encoding="utf-8")
+    skills = load_skills(SKILLS_DIR)
+    skill_section = skills_summary(skills)
+    skill_tool = make_skill_tool(skills)
+
+    instructions = base_prompt + "\n\n" + skill_section
+
+    {% for name, cfg in mcp_servers.items() %}mcp_{{ name }} = MCPTools(
+        command="{{ cfg.command }}",
+        transport="{{ cfg.transport | default('stdio') }}",
+    )
+    {% endfor %}
+
+    common_tools = [{% for name in mcp_servers.keys() %}mcp_{{ name }}, {% endfor %}skill_tool]
+    role_cfg = manifest["models"]["roles"]
+
+    {% for r in models.roles.keys() %}{% if r != 'orchestrator' %}{{ r }} = build_{{ r }}(role_cfg["{{ r }}"], instructions, common_tools)
+    {% endif %}{% endfor %}
+
+    orchestrator_model = resolve_model(role_cfg["orchestrator"]["default"])
+    team_mode = manifest["models"].get("team_mode", "coordinate")
+
+    return Team(
+        name="{{ identity.name }}",
+        model=orchestrator_model,
+        members=[{% for r in models.roles.keys() %}{% if r != 'orchestrator' %}{{ r }}{% if not loop.last %}, {% endif %}{% endif %}{% endfor %}],
+        instructions=instructions + "\n\n" + ORCHESTRATOR_INSTRUCTIONS,
+        mode=team_mode,
+        tools=common_tools,
+        add_history_to_context=True,
+        num_history_runs=20,
+        add_team_history_to_members=True,
+    )
+
+
+def build_agentos() -> AgentOS:
+    """Wrap the team in AgentOS with persistent storage.
+
+    Se TELEGRAM_BOT_TOKEN è settato in .env, attiva l'interface Telegram nativa
+    di Agno (modalità webhook, richiede URL pubblico in prod).
+    """
+    from agno.db.sqlite import SqliteDb
+
+    team = build_team()
+    db_path = os.getenv("AGENTOS_DB_PATH", "data/agent_memory.db")
+    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+    team.db = SqliteDb(db_file=db_path)
+
+    interfaces = []
+    telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
+    if telegram_token:
+        from agno.os.interfaces.telegram import Telegram
+        interfaces.append(Telegram(team=team, token=telegram_token, streaming=False))
+        print(f"[telegram] interface attivata (token: ...{telegram_token[-8:]})")
+
+    return AgentOS(
+        teams=[team],
+        db=SqliteDb(db_file=db_path),
+        interfaces=interfaces or None,
+        tracing=False,
+    )
+
+
+def main():
+    agent_os = build_agentos()
+    host = os.getenv("AGENTOS_HOST", "localhost")
+    port = int(os.getenv("AGENTOS_PORT", "7777"))
+    app = agent_os.get_app()
+    agent_os.serve(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()
