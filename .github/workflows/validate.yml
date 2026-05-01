@@ -110,15 +110,25 @@ jobs:
           with open('.claude-plugin/plugin.json') as f:
               data = json.load(f)
           missing = []
-          for key in ('commands', 'skills'):
-              for p in data.get(key, []):
-                  rel = p.lstrip('./')
-                  if not os.path.isfile(rel):
-                      missing.append(p)
+          # commands: array of paths to .md files
+          for p in data.get('commands', []):
+              rel = p.lstrip('./')
+              if not os.path.isfile(rel):
+                  missing.append(('command', p))
+          # skills: array of paths to directories containing SKILL.md
+          skills = data.get('skills')
+          if isinstance(skills, str):
+              skills = [skills]
+          for p in skills or []:
+              rel = p.rstrip('/').lstrip('./')
+              if not os.path.isdir(rel):
+                  missing.append(('skill-dir', p))
+              elif not os.path.isfile(os.path.join(rel, 'SKILL.md')):
+                  missing.append(('skill-md', p + 'SKILL.md'))
           if missing:
-              print("Paths in plugin.json missing on disk:")
-              for m in missing:
-                  print("  ", m)
+              print("Issues in plugin.json paths:")
+              for kind, m in missing:
+                  print(f"  [{kind}] {m}")
               sys.exit(1)
           print("All plugin.json paths exist")
           EOF

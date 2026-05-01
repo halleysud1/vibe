@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.0.1] — 2026-05-01
+
+### Fixed
+- **Manifest schema**: il campo `skills` in `plugin.json` ora punta a **directory** (`./skills/<nome>/`) invece che a file `SKILL.md`, conformemente allo schema attuale del Claude Code plugin loader. Senza questo fix, il plugin v3.0.0 non caricava le skill dopo l'installazione.
+- CI workflow aggiornato per verificare path-a-directory invece di path-a-file per le skill.
+
+### Note di installazione
+Chi ha tentato di aggiornare a 3.0.0 e ha visto errori di validazione del manifest deve:
+1. (Opzionale ma raccomandato) cancellare la cache locale: `rm -rf ~/.claude/plugins/cache/vibecoding-marketplace/`
+2. Lanciare `claude plugin update vibecoding` (o disinstalla + reinstalla via `/plugin`)
+
+L'errore precedente _"userConfig.qualityScoreTarget.title: Invalid input: expected string, received undefined"_ era causato dalla **cache locale 2.1.0** (con `userConfig` non più valido nello schema), non dal codice 3.0.0 stesso. Una volta pulita la cache, il plugin 3.0.1 si carica correttamente.
+
+---
+
 ## [3.0.0] — 2026-05-01
 
 ### Pivot: from "autonomous multi-agent team" to "SDD toolkit"
