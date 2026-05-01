@@ -2,9 +2,9 @@ name: Validate Plugin
 
 on:
   push:
-    branches: [main]
+    branches: [main, v3.0]
   pull_request:
-    branches: [main]
+    branches: [main, v3.0]
 
 jobs:
   validate:
@@ -14,123 +14,122 @@ jobs:
 
       - name: Validate plugin.json
         run: |
-          echo "🔍 Checking plugin.json..."
+          echo "Checking plugin.json..."
           if ! python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))"; then
-            echo "❌ plugin.json is not valid JSON"
+            echo "plugin.json is not valid JSON"
             exit 1
           fi
-          echo "✅ plugin.json is valid"
+          echo "plugin.json is valid"
 
       - name: Validate marketplace.json
         run: |
-          echo "🔍 Checking marketplace.json..."
+          echo "Checking marketplace.json..."
           if ! python3 -c "import json; json.load(open('.claude-plugin/marketplace.json'))"; then
-            echo "❌ marketplace.json is not valid JSON"
+            echo "marketplace.json is not valid JSON"
             exit 1
           fi
-          echo "✅ marketplace.json is valid"
-
-      - name: Validate hooks.json
-        run: |
-          echo "🔍 Checking hooks.json..."
-          if ! python3 -c "import json; json.load(open('hooks/hooks.json'))"; then
-            echo "❌ hooks.json is not valid JSON"
-            exit 1
-          fi
-          echo "✅ hooks.json is valid"
+          echo "marketplace.json is valid"
 
       - name: Check required files exist
         run: |
-          echo "🔍 Checking required files..."
+          echo "Checking required files..."
           MISSING=0
           for f in \
             ".claude-plugin/plugin.json" \
             "README.md" \
+            "CHANGELOG.md" \
             "LICENSE" \
             "commands/init.md" \
-            "commands/validate.md" \
-            "commands/report.md" \
-            "commands/status.md" \
-            "agents/architect.md" \
-            "agents/reviewer.md" \
-            "agents/security-auditor.md" \
-            "agents/tester.md" \
-            "agents/validation-agent.md" \
-            "skills/methodology.md" \
-            "skills/context-optimization.md" \
-            "skills/validation-strategies.md" \
-            "skills/quality-system.md" \
-            "hooks/hooks.json" \
-            "scripts/quality-gate.sh" \
-            "templates/docs/vibecoding/METHODOLOGY.md" \
-            "templates/docs/vibecoding/CONTEXT_RULES.md"
+            "skills/methodology/SKILL.md" \
+            "skills/validation-strategies/SKILL.md" \
+            "skills/change-request/SKILL.md" \
+            "skills/agentify/SKILL.md" \
+            "skills/skill-bootstrap/SKILL.md" \
+            "templates/modulo/CLAUDE.md" \
+            "templates/modulo/PROJECT_SPEC.md" \
+            "templates/modulo/PLAN.md" \
+            "templates/cartella/CLAUDE.md" \
+            "templates/cartella/PROJECT_SPEC.md" \
+            "templates/skill-stub/SKILL.md" \
+            "docs/MIGRATION_2.1_to_3.0.md"
           do
             if [ ! -f "$f" ]; then
-              echo "  ❌ Missing: $f"
+              echo "  Missing: $f"
               MISSING=$((MISSING + 1))
             else
-              echo "  ✅ $f"
+              echo "  OK $f"
             fi
           done
           if [ $MISSING -gt 0 ]; then
-            echo "❌ $MISSING required files missing"
+            echo "$MISSING required files missing"
             exit 1
           fi
-          echo "✅ All required files present"
-
-      - name: Validate agent frontmatter
-        run: |
-          echo "🔍 Checking agent frontmatter..."
-          for f in agents/*.md; do
-            if ! head -1 "$f" | grep -q "^---"; then
-              echo "  ❌ $f: missing YAML frontmatter"
-              exit 1
-            fi
-            if ! grep -q "^name:" "$f"; then
-              echo "  ❌ $f: missing 'name' in frontmatter"
-              exit 1
-            fi
-            if ! grep -q "^description:" "$f"; then
-              echo "  ❌ $f: missing 'description' in frontmatter"
-              exit 1
-            fi
-            echo "  ✅ $f"
-          done
-          echo "✅ All agents have valid frontmatter"
+          echo "All required files present"
 
       - name: Validate skill frontmatter
         run: |
-          echo "🔍 Checking skill frontmatter..."
-          for f in skills/*.md; do
+          echo "Checking skill frontmatter..."
+          for f in skills/*/SKILL.md; do
             if ! head -1 "$f" | grep -q "^---"; then
-              echo "  ❌ $f: missing YAML frontmatter"
+              echo "  $f: missing YAML frontmatter"
               exit 1
             fi
-            echo "  ✅ $f"
-          done
-          echo "✅ All skills have valid frontmatter"
-
-      - name: Check scripts are executable
-        run: |
-          echo "🔍 Checking script permissions..."
-          for f in scripts/*.sh; do
-            if [ ! -x "$f" ]; then
-              echo "  ⚠️ $f is not executable (will fix)"
-              chmod +x "$f"
+            if ! grep -q "^name:" "$f"; then
+              echo "  $f: missing 'name' in frontmatter"
+              exit 1
             fi
-            echo "  ✅ $f"
+            if ! grep -q "^description:" "$f"; then
+              echo "  $f: missing 'description' in frontmatter"
+              exit 1
+            fi
+            echo "  OK $f"
           done
+          echo "All skills have valid frontmatter"
+
+      - name: Validate command frontmatter
+        run: |
+          echo "Checking command frontmatter..."
+          for f in commands/*.md; do
+            if ! head -1 "$f" | grep -q "^---"; then
+              echo "  $f: missing YAML frontmatter"
+              exit 1
+            fi
+            if ! grep -q "^name:" "$f"; then
+              echo "  $f: missing 'name' in frontmatter"
+              exit 1
+            fi
+            echo "  OK $f"
+          done
+          echo "All commands have valid frontmatter"
+
+      - name: Cross-check plugin.json paths
+        run: |
+          echo "Checking that all paths in plugin.json exist..."
+          python3 - <<'EOF'
+          import json, sys, os
+          with open('.claude-plugin/plugin.json') as f:
+              data = json.load(f)
+          missing = []
+          for key in ('commands', 'skills'):
+              for p in data.get(key, []):
+                  rel = p.lstrip('./')
+                  if not os.path.isfile(rel):
+                      missing.append(p)
+          if missing:
+              print("Paths in plugin.json missing on disk:")
+              for m in missing:
+                  print("  ", m)
+              sys.exit(1)
+          print("All plugin.json paths exist")
+          EOF
 
       - name: Summary
         run: |
           echo ""
-          echo "════════════════════════════════════════"
-          echo "  ✅ Vibecoding Plugin Validation Passed"
-          echo "════════════════════════════════════════"
+          echo "==========================================="
+          echo "  Vibecoding 3.0 Plugin Validation Passed"
+          echo "==========================================="
           echo ""
           echo "  Commands: $(ls commands/*.md | wc -l)"
-          echo "  Agents:   $(ls agents/*.md | wc -l)"
-          echo "  Skills:   $(ls skills/*.md | wc -l)"
-          echo "  Hooks:    $(python3 -c "import json; d=json.load(open('hooks/hooks.json')); print(sum(len(v) for v in d.get('hooks',{}).values()))")"
-          echo "  Scripts:  $(ls scripts/*.sh | wc -l)"
+          echo "  Skills:   $(ls skills/*/SKILL.md | wc -l)"
           echo "  Templates:$(find templates -type f | wc -l)"

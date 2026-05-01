@@ -1,5 +1,49 @@
 # Changelog
 
+## [3.0.0] — 2026-05-01
+
+### Pivot: from "autonomous multi-agent team" to "SDD toolkit"
+
+Il plugin è stato ripensato come **toolkit di skill** per spec-driven development.
+Un audit ha mostrato che ~70% delle feature di v2.1 sono ora coperte nativamente da
+Claude Code (hooks, subagents, parallel execution, validation strategies). v3.0 si
+concentra sul valore unico: la **metodologia** e il **routing 3-vie** delle desiderata.
+
+### Added
+- **Skill `change-request`** — protocollo a 5 fasi per change non banali (Impact Analysis → Spec First → Migration Plan → Implementation → Close the Loop). Anti bias additivo, no parallel flows
+- **Skill `agentify`** — protocollo a 5 fasi per trasformare un progetto Claude Code in agente standalone (default: Agno + AgentOS). Include scripts/discover.py e templates Jinja2
+- **Skill `skill-bootstrap`** — intervista metodologica di inizio progetto: distingue modulo vs cartella di lavorazione, fa routing delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL
+- **Templates `modulo/`** — scaffold per progetti software (CLAUDE.md, PROJECT_SPEC, PLAN, docs/ARCHITECTURE)
+- **Templates `cartella/`** — scaffold per cartelle di lavorazione Claude (analisi, automazione, documentazione)
+- **Template `skill-stub/SKILL.md`** — usato da Fase D di skill-bootstrap per scrivere nuove skill
+- **`docs/MIGRATION_2.1_to_3.0.md`** — guida per chi aveva v2.1 installato
+
+### Changed
+- **`/vibecoding:init`** esteso: aggiunte FASE A (modulo vs cartella), FASE C (routing 3-vie delle desiderata), FASE D (writer di SKILL.md). Delega la logica di routing a `skill-bootstrap`
+- **Skill `methodology`** — refactor SDD-focused: tolti i riferimenti agli agenti rimossi, integrate parti utili di `quality-system`, allineata ai subagent nativi e ai comandi `/review` `/security-review`
+- **Skill `validation-strategies`** — contenuto invariato (resta unica), spostata in `skills/validation-strategies/SKILL.md`
+- **Manifesto `plugin.json`** — versione 3.0.0, descrizione aggiornata, rimosso `userConfig` (non più nello schema plugin), rimossi `agents`, `hooks`, comandi obsoleti
+- **README.md** — riscrittura completa: pivot SDD toolkit
+- Tutte le skill spostate in cartelle (`skills/<nome>/SKILL.md`) per allinearsi al formato Agent Skills standard
+
+### Removed
+- **Tutti gli agenti** (`architect`, `reviewer`, `tester`, `security-auditor`, `validation-agent`) — usa **subagent nativi** di Claude Code e i comandi `/review`, `/security-review`
+- **Comandi obsoleti** (`/vibecoding:validate`, `/vibecoding:status`, `/vibecoding:review`, `/vibecoding:plan`) — slash command custom deprecati a favore di skills; le funzionalità sono coperte dai comandi nativi
+- **`hooks/hooks.json`** intero — tutti gli hook (SessionStart, Stop type:prompt, PreCompact, PostCompact, PreToolUse Bash, PostToolUse Edit) sono coperti nativamente. I pattern destructive sono coperti dal permission system
+- **Skill `parallel-execution`** — sostituita da Agent Teams nativi (`CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`) e da parallel tool calls
+- **Skill `quality-system`** — parti utili assorbite in `methodology`, altre rimosse
+- **`scripts/quality-gate.sh`** spostato in `templates/scripts/` (opzionale, non plugin-level)
+- **`templates/docs/vibecoding/METHODOLOGY.md`** — duplicato della skill methodology, eliminato
+- **Campo `userConfig` nel manifest** — non più nello schema plugin attuale
+
+### Migration
+Chi aveva v2.1 installato deve aggiornare `~/.claude/settings.json` (path repo invariato:
+`halleysud1/vibe`). I progetti generati con v2.1 continuano a funzionare; per migrarli
+al routing 3-vie, lancia `skill-bootstrap` su una sessione del progetto. Vedi
+`docs/MIGRATION_2.1_to_3.0.md`.
+
+---
+
 ## [2.1.0] — 2026-03-29
 
 ### Added

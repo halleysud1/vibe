@@ -1,0 +1,31 @@
+# {{ identity.name }} — production image
+FROM python:3.13-slim
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY agent /app/agent
+{% for name, cfg in mcp_servers.items() %}COPY {{ cfg.command.split()[1].rsplit('/', 1)[0] | default('mcp-' + name) }} /app/{{ cfg.command.split()[1].rsplit('/', 1)[0] | default('mcp-' + name) }}
+{% endfor %}COPY config /app/config
+{% if 'docs/best-practices' is in_project %}COPY docs/best-practices /app/docs/best-practices
+{% endif %}COPY .claude/skills /app/.claude/skills
+
+RUN mkdir -p /app/data /app/audit_log/proposals
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    AGENTOS_HOST=0.0.0.0 \
+    AGENTOS_PORT=7777 \
+    AGENTOS_DB_PATH=/app/data/agent_memory.db \
+    HS_AGENT_AUDIT_DIR=/app/audit_log/ \
+    HS_AGENT_PROPOSALS_DIR=/app/audit_log/proposals/
+
+EXPOSE 7777
+
+CMD ["python", "-m", "agent.main"]

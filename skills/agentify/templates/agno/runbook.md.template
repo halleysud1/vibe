@@ -1,0 +1,78 @@
+# {{ identity.name }} — Runbook
+
+Operations playbook per l'agente basato su Agno + AgentOS.
+
+## Avvio locale (sviluppo)
+
+```bash
+# 1. Crea .env (vedi .env.example)
+cp .env.example .env
+# compila i valori
+
+# 2. Installa deps
+pip install -r requirements.txt
+
+# 3. Smoke test
+pytest agent/tests/test_smoke.py -v
+
+# 4. Avvia AgentOS (chat UI + sessions)
+python -m agent.main
+# → http://localhost:7777
+```
+
+## Avvio in Docker (deploy)
+
+```bash
+cd deploy/
+docker compose up -d --build
+docker compose logs -f agent
+docker compose ps
+```
+
+## Operazioni comuni
+
+### Bench modelli
+```bash
+python -m agent.tests.bench_models --role {{ models.roles.keys() | list | first }}
+python -m agent.tests.bench_models --role all --save bench_results.json
+```
+
+{% if autonomy.write and autonomy.write != 'DENIED' %}### Vedere proposte pending (propose-and-confirm)
+```bash
+python -m agent.workflows.propose_confirm list
+```
+
+### Approvare/rifiutare una proposta
+```bash
+python -m agent.workflows.propose_confirm approve <proposal_id>
+python -m agent.workflows.propose_confirm reject <proposal_id> --reason "..."
+```
+{% endif %}
+
+## Troubleshooting
+
+### `ImportError: cannot import name 'X' from 'agno...'`
+L'API Agno cambia tra versioni. Allinea `requirements.txt` alla versione testata.
+
+### MCP server non risponde
+{% for name, cfg in mcp_servers.items() %}Verifica che `{{ cfg.command }}` parta correttamente.
+{% endfor %}
+
+### Memoria sessione persa dopo restart
+Il file `data/agent_memory.db` deve essere persistente. In Docker è già montato come volume.
+
+### Quota API LLM esaurita
+Switch al modello backup nel manifesto: cambia il `default` del ruolo affetto e riavvia.
+
+## Calibrazione
+
+1. **Tono sbagliato**: raffina `agent_system_prompt.md`
+2. **Output non pertinenti**: raffina le instructions del ruolo affetto
+3. **Tool calling errato**: cambia modello (default → candidate alternativo via bench)
+4. **Boundaries non rispettate**: rinforza il system prompt, NON rilassare i confini
+
+## Sicurezza
+
+- File `.env` contiene chiavi API. Mai committare. Verifica `.gitignore`.
+- L'agente ha accesso configurato in `agent.yaml` (sezione `autonomy`).
+- Audit trail: ogni azione finisce in `audit_log/`.

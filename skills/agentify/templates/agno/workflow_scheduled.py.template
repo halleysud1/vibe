@@ -1,0 +1,85 @@
+"""Workflow schedulato — TEMPLATE.
+
+Cron: {{ triggers.schedule.cron }}. {{ triggers.schedule.description }}.
+
+Usage:
+    python -m agent.workflows.<this>            # esegui ora
+    python -m agent.workflows.<this> --schedule # avvia scheduler daemon
+"""
+
+from __future__ import annotations
+import argparse
+import asyncio
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+AUDIT_DIR = Path(os.getenv("HS_AGENT_AUDIT_DIR", PROJECT_ROOT / "audit_log"))
+
+
+async def run_workflow() -> dict:
+    """TODO durante scaffolding: implementa la logica del workflow.
+
+    Pattern tipico:
+    1. Carica il team con `from agent.main import build_team; team = build_team()`
+    2. Per ogni entità del dominio (es. ogni persona, ogni ticket, ecc.),
+       chiedi al team di processarla con un prompt strutturato
+    3. Salva output in cartelle dedicate
+    4. Logga audit trail con timestamp + entità + esito
+    """
+    from agent.main import build_team
+    team = build_team()
+
+    # TODO: itera sul dominio
+    # results = []
+    # for entity in load_entities():
+    #     response = await team.arun(f"Processa {entity}: ...")
+    #     results.append({...})
+
+    audit_path = AUDIT_DIR / f"workflow_{datetime.utcnow():%Y%m%d_%H%M%S}.json"
+    AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+    audit_path.write_text(
+        json.dumps({"placeholder": "implement run_workflow"}, indent=2, ensure_ascii=False),
+        encoding="utf-8"
+    )
+    return {"audit_path": str(audit_path)}
+
+
+def schedule_with_apscheduler():
+    """APScheduler che esegue run_workflow al cron specificato."""
+    from apscheduler.schedulers.blocking import BlockingScheduler
+
+    scheduler = BlockingScheduler()
+
+    @scheduler.scheduled_job("cron", **{
+        # TODO durante scaffolding: parsare manifest.triggers.schedule.cron
+        # in argomenti APScheduler. Default: every Monday 08:00
+        "day_of_week": "mon", "hour": 8, "minute": 0,
+    })
+    def _job():
+        asyncio.run(run_workflow())
+
+    print("[scheduler] running")
+    scheduler.start()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--schedule", action="store_true")
+    args = parser.parse_args()
+
+    if args.schedule:
+        schedule_with_apscheduler()
+    else:
+        result = asyncio.run(run_workflow())
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

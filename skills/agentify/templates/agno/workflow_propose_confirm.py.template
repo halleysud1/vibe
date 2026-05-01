@@ -1,0 +1,101 @@
+"""Propose-and-confirm queue — TEMPLATE.
+
+Solo se autonomy.write != DENIED e mode = propose-and-confirm.
+
+Le azioni vengono SEMPRE prima salvate in audit_log/proposals/ come JSON.
+L'approver le approva (o rifiuta) via chat o CLI, e solo allora vengono eseguite.
+
+NOTA: questo file è generico — lo schema dataclass `ChallengeProposal`
+va adattato al dominio. Esempio Halley Sud: badge/target/periodo/partecipanti.
+Per altri domini cambia i campi.
+"""
+
+from __future__ import annotations
+import json
+import os
+from dataclasses import asdict, dataclass, field
+from datetime import datetime
+from pathlib import Path
+
+PROPOSALS_DIR = Path(os.getenv("HS_AGENT_PROPOSALS_DIR", "audit_log/proposals/"))
+DECISIONS_DIR = Path(os.getenv("HS_AGENT_AUDIT_DIR", "audit_log/")) / "decisions"
+
+
+@dataclass
+class Proposal:
+    """TODO durante scaffolding: adatta i campi al dominio specifico.
+
+    Esempio: per challenge gamification (Halley Sud):
+        person_slug: str
+        badge: str
+        target: str
+        period_days: int
+        participants: list[str]
+
+    Esempio: per ticket support automation:
+        ticket_id: int
+        action: str  # close, reassign, escalate
+        target_queue: str
+        reason: str
+    """
+    entity_id: str       # identifica univocamente la cosa su cui agire
+    action_type: str     # tipo di azione proposta
+    payload: dict        # dati dell'azione (specifici al dominio)
+    razionale: str
+    proposed_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    proposal_id: str = ""
+    status: str = "pending"
+
+    def __post_init__(self):
+        if not self.proposal_id:
+            date_token = self.proposed_at[:10].replace("-", "")
+            self.proposal_id = f"{self.entity_id}_{date_token}_{self.action_type}"
+
+
+def save_proposal(p: Proposal) -> Path:
+    PROPOSALS_DIR.mkdir(parents=True, exist_ok=True)
+    path = PROPOSALS_DIR / f"{p.proposal_id}.json"
+    path.write_text(json.dumps(asdict(p), indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def list_pending_proposals() -> list[Proposal]:
+    if not PROPOSALS_DIR.exists():
+        return []
+    out = []
+    for f in sorted(PROPOSALS_DIR.glob("*.json")):
+        data = json.loads(f.read_text(encoding="utf-8"))
+        if data.get("status") == "pending":
+            out.append(Proposal(**{k: v for k, v in data.items() if k in Proposal.__dataclass_fields__}))
+    return out
+
+
+def approve_proposal(proposal_id: str, approver: str) -> dict:
+    return _resolve(proposal_id, "approved", approver)
+
+
+def reject_proposal(proposal_id: str, approver: str, reason: str = "") -> dict:
+    return _resolve(proposal_id, "rejected", approver, reason)
+
+
+def _resolve(proposal_id: str, status: str, approver: str, reason: str = "") -> dict:
+    path = PROPOSALS_DIR / f"{proposal_id}.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Proposal not found: {proposal_id}")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if data.get("status") != "pending":
+        raise ValueError(f"Already resolved: {data.get('status')}")
+    data.update({
+        "status": status,
+        "resolved_at": datetime.utcnow().isoformat() + "Z",
+        "resolved_by": approver,
+    })
+    if reason:
+        data["resolution_reason"] = reason
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    DECISIONS_DIR.mkdir(parents=True, exist_ok=True)
+    (DECISIONS_DIR / f"{proposal_id}_{status}.json").write_text(
+        json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    return data
