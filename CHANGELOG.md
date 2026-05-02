@@ -1,5 +1,24 @@
 # Changelog
 
+## [3.1.0] — 2026-05-02
+
+### Added
+- **Skill `md-to-pdf`** — converte file Markdown in PDF formattati (pure-python via `markdown-pdf`, niente runtime nativi). Supporta TOC, CSS personalizzato, batch, paper-size e metadata. Aggiunto `skills/md-to-pdf/SKILL.md`, `scripts/convert.py`, `styles/default.css`.
+- **Sintesi AI opzionale** (`--ai-summary`) — accoda al PDF una sezione "Sintesi AI (generata automaticamente)" con TL;DR, punti chiave, "quando consultarlo" e limiti, prodotta da Gemini. **Non modifica il sorgente `.md`**: la sintesi vive solo nel PDF. Pensata per leggere velocemente spec lunghe, SKILL.md di terzi, best-practice. Errori non bloccanti: senza `GEMINI_API_KEY` o con chiamata fallita, il PDF si genera comunque senza sintesi.
+- **Strip front-matter YAML automatico** — le SKILL.md e i markdown con metadata Jekyll/Hugo (`---...---`) vengono gestiti correttamente; senza questo, `markdown-pdf` interpretava le fence come thematic break e rompeva il TOC.
+- **Fallback TOC** — se il documento ha heading non lineari, lo script ritenta automaticamente la generazione senza TOC con un warning, anziche fallire.
+
+### Dipendenze (per la nuova skill)
+- `markdown-pdf` (obbligatoria per la conversione)
+- `google-genai` + `python-dotenv` (solo per `--ai-summary`)
+
+### Changed
+- `plugin.json`: versione 3.0.1 -> 3.1.0, descrizione e keywords aggiornati, aggiunto `./skills/md-to-pdf/` all'array `skills`.
+- `marketplace.json`: versione 3.0.1 -> 3.1.0, descrizione e count skill aggiornati (5 -> 6).
+- CI workflow: aggiunti i tre file della nuova skill alla lista required.
+
+---
+
 ## [3.0.1] — 2026-05-01
 
 ### Fixed

@@ -45,6 +45,9 @@ jobs:
             "skills/change-request/SKILL.md" \
             "skills/agentify/SKILL.md" \
             "skills/skill-bootstrap/SKILL.md" \
+            "skills/md-to-pdf/SKILL.md" \
+            "skills/md-to-pdf/scripts/convert.py" \
+            "skills/md-to-pdf/styles/default.css" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \

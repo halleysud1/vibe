@@ -7,14 +7,14 @@
   },
   "metadata": {
     "description": "Vibecoding 3.0 — Toolkit di skill per spec-driven development con Claude Code: filosofia 3-livelli, routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili change-request e agentify",
-    "version": "3.0.1"
+    "version": "3.1.0"
   },
   "plugins": [
     {
       "name": "vibecoding",
       "source": "./",
-      "description": "Toolkit di skill per spec-driven development. Include 5 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude.",
-      "version": "3.0.1",
+      "description": "Toolkit di skill per spec-driven development. Include 6 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap, md-to-pdf), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude.",
+      "version": "3.1.0",
       "author": {
         "name": "Gianluigi — Halley Sud SRL"
       },
@@ -26,6 +26,7 @@
         "methodology",
         "change-request",
         "agentify",
+        "md-to-pdf",
         "claude-code"
       ],
       "category": "development-workflow"
