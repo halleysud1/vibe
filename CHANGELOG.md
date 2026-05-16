@@ -1,5 +1,20 @@
 # Changelog
 
+## [3.2.0] - 2026-05-16
+
+### Added
+- **Skill `agentic-ops-daemon`** - protocollo portabile per progettare daemon/scheduler operativi che risvegliano periodicamente una CLI di progetto o un coding agent, eseguono check/refresh/report, scrivono runbook e audit trail, e applicano livelli di autonomia graduati.
+- **Ops runbook pattern** - standardizza `docs/ops/RUNBOOK.md`, `STATE.md`, `TASK_QUEUE.md`, `LAST_RUN.md`, `OUTBOX.md`, `AUDIT.md` come interfaccia fra scheduler, CLI e agente.
+- **Autonomy gates** - classifica le azioni da L0 read-only a L5 azioni vietate, con regola propose-and-confirm per modifiche a codice, policy, strategie, pesi o sistemi esterni.
+- **Provider AI guidance** - include regole per integrare provider come Google Vertex/Gemini senza salvare segreti in repo e distinguendo ricerca/proposta da decisione vincolante.
+
+### Changed
+- `plugin.json`: versione 3.1.0 -> 3.2.0, descrizione e keywords aggiornati, aggiunto `./skills/agentic-ops-daemon/` all'array `skills`.
+- `marketplace.json`: versione 3.1.0 -> 3.2.0, descrizione e count skill aggiornati (6 -> 7).
+- CI workflow: aggiunta la nuova skill alla lista required.
+
+---
+
 ## [3.1.0] — 2026-05-02
 
 ### Added

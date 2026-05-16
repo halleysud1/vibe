@@ -48,6 +48,7 @@ jobs:
             "skills/md-to-pdf/SKILL.md" \
             "skills/md-to-pdf/scripts/convert.py" \
             "skills/md-to-pdf/styles/default.css" \
+            "skills/agentic-ops-daemon/SKILL.md" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \
