@@ -17,7 +17,7 @@ from markdown_pdf import MarkdownPdf, Section
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CSS = SKILL_DIR / "styles" / "default.css"
 
-DEFAULT_AI_MODEL = "gemini-3.1-pro-preview"
+DEFAULT_AI_MODEL = "gemini-3.5-flash"
 
 SUMMARY_SYSTEM_PROMPT = (
     "Sei un assistente esperto nel produrre sintesi rapide di documenti tecnici, "

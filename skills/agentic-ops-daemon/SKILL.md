@@ -206,7 +206,7 @@ ai:
   provider: google_vertex
   project_id: my-project
   location: europe-west4
-  default_model: gemini-2.5-pro
+  default_model: gemini-3.5-flash
   grounding: google_search
   deep_research_enabled: true
 ```

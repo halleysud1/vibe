@@ -66,7 +66,7 @@ python skills/md-to-pdf/scripts/convert.py docs/specs/*.md --out-dir reports/
 python skills/md-to-pdf/scripts/convert.py docs/long-spec.md --ai-summary
 
 # Modello Gemini esplicito
-python skills/md-to-pdf/scripts/convert.py docs/spec.md --ai-summary --ai-model gemini-3.1-pro-preview
+python skills/md-to-pdf/scripts/convert.py docs/spec.md --ai-summary --ai-model gemini-3.5-flash
 
 # CSS personalizzato + metadata
 python skills/md-to-pdf/scripts/convert.py spec.md --css mio_stile.css --title "Spec v2" --author "Team"
@@ -89,7 +89,7 @@ python skills/md-to-pdf/scripts/convert.py spec.md --toc-level 0 --paper-size Le
 | `--paper-size` | `A4` | A4, A5, Letter, ... |
 | `--title` / `--author` | - | Metadata PDF |
 | `--ai-summary` | off | Appende sintesi AI in coda al PDF |
-| `--ai-model` | `gemini-3.1-pro-preview` | Modello Gemini per la sintesi |
+| `--ai-model` | `gemini-3.5-flash` | Modello Gemini per la sintesi |
 
 ## Sintesi AI opzionale
 
