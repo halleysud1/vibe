@@ -17,11 +17,12 @@ il prodotto. Ogni tipo di applicazione richiede una strategia diversa per "esser
 
 ## 0. Web Application — Claude Preview (METODO PREFERITO)
 
-> Quando i tool MCP `preview_*` sono disponibili, usali al posto di Playwright.
-> Sono più veloci, integrati, e non richiedono dipendenze esterne.
+> In Claude Code Desktop, quando il progetto ha un `.claude/launch.json`, usa la
+> **preview integrata** (browser embedded) al posto di Playwright: è più veloce,
+> integrata e non richiede dipendenze esterne.
 
 ### Prerequisiti
-- Tool MCP `preview_*` disponibili nella sessione
+- Claude Code Desktop con preview integrata disponibile nella sessione
 - File `.claude/launch.json` con configurazione del dev server
 
 ### Setup
@@ -40,23 +41,35 @@ Se `.claude/launch.json` non esiste, crealo:
 }
 ```
 
-### Mapping scenari → tool Preview
+### Come si usa
+Avvia la preview con `preview_start` (parametro `name` = la configurazione in
+`launch.json`, es. `dev`): Claude lancia il dev server e vi collega un browser
+embedded. Da lì le verifiche si guidano **in linguaggio naturale** — non servono
+nomi di tool specifici. Chiedi a Claude di controllare lo scenario e lascia che
+usi le capability di preview (screenshot, lettura console, ispezione network/DOM,
+click, compilazione form, resize del viewport).
 
-| Scenario | Tool | Come verificare |
-|----------|------|-----------------|
-| Homepage carica | `preview_screenshot` | Pagina visibile, layout corretto |
-| Errori JavaScript | `preview_console_logs(level: "error")` | Nessun errore in console |
-| API funzionanti | `preview_network(filter: "failed")` | Nessuna richiesta fallita |
-| Testo e struttura | `preview_snapshot` | Accessibility tree corretto |
-| Click e navigazione | `preview_click(selector)` + `preview_snapshot` | Stato aggiornato |
-| Compilazione form | `preview_fill(selector, value)` + `preview_snapshot` | Dati inseriti, form funziona |
-| Stili CSS | `preview_inspect(selector, styles: [...])` | Valori corretti |
-| Mobile responsive | `preview_resize(preset: "mobile")` | Layout adattato |
-| Dark mode | `preview_resize(colorScheme: "dark")` | Tema applicato |
-| API response body | `preview_network(requestId: "...")` | Dati corretti |
+### Scenari da coprire
+
+| Scenario | Cosa far verificare |
+|----------|---------------------|
+| Homepage carica | Pagina visibile, layout corretto, nessun crash |
+| Errori JavaScript | Nessun errore nei console log |
+| API funzionanti | Nessuna richiesta di rete fallita |
+| Testo e struttura | Accessibility tree / contenuto corretto |
+| Click e navigazione | Lo stato si aggiorna dopo il click |
+| Compilazione form | I dati si inseriscono e il form funziona |
+| Stili CSS | Le proprietà calcolate sono quelle attese |
+| Mobile responsive | Layout adattato a viewport mobile |
+| Dark mode | Tema scuro applicato correttamente |
+| API response body | Il body della risposta contiene i dati corretti |
+
+> Doc di riferimento: https://code.claude.com/docs/en/desktop.md#preview-your-app
+> I nomi esatti dei tool di preview possono cambiare tra versioni: affidati al
+> meccanismo `preview_start` + linguaggio naturale, non a tool name hardcodati.
 
 ### Quando usare Playwright invece
-- Tool `preview_*` non disponibili
+- Preview integrata non disponibile (es. non sei su Claude Code Desktop)
 - Serve test multi-tab o multi-browser
 - Serve automazione oltre Chromium
 - Il progetto non ha un dev server configurabile
