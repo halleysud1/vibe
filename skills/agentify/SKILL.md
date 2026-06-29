@@ -208,6 +208,7 @@ I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja
 | `agno/runbook.md.template` | MEDIA — cambiano comandi specifici |
 | `agno/telegram_polling.py.template` | BASSA — quasi-copia, parametrizza solo team_id e env vars |
 | `agno/telegram_setup.md` | BASSA — copia diretta come guida nel progetto target |
+| `agno/router.py.template` | MEDIA — triage opzionale; personalizza `_ACTION`/`_CHATTY` sul dominio |
 
 ### Interfaces & chat layer (opzionale)
 
@@ -233,6 +234,47 @@ bot. Per webhook nativo, valutare auth gateway (bearer token / IP allowlist).
 4. Webhook (prod): URL pubblico + setWebhook → attivazione automatica in `main.py`
 
 Vedi `templates/agno/telegram_setup.md` per la guida copiabile.
+
+### Loop a due corsie: triage + reporting live (latenza)
+
+Su un agente conversazionale la latenza percepita è il problema #1: un loop ReAct
+fa *modello → tool → modello → …*, e su un modello *thinking* (Gemini 3.x, o3,
+ecc.) il budget di ragionamento si paga a **ogni** chiamata del loop. Saluti e
+domande banali non meritano lo stesso trattamento di un task operativo.
+
+Pattern raccomandato — **triage che instrada su due corsie**:
+
+1. **Router** (`templates/agno/router.py.template`, opzionale): classifica il
+   messaggio in `chat` vs `ops`. Ibrido — euristica regex gratuita per i casi
+   netti, micro-call a un modello piccolo solo sugli ambigui. Fail-safe su `ops`.
+2. **Corsia chat**: modello veloce (`thinking_level="low"` / thinking budget
+   minimo), **nessun tool**, risposta in un colpo. Per saluti/chiarimenti.
+3. **Corsia ops**: loop completo con reasoning di default e tool. La latenza qui
+   è accettata, ma va **mascherata** col reporting live (sotto).
+
+Le due corsie condividono `db` + `session_id` ⇒ **storia unica**, continuità tra
+chiacchiera e operatività.
+
+**Reporting live consapevole** — invece di un "⏳ attendi…" muto, aggancia gli
+eventi *reali* del loop e proiettali su **un solo messaggio di stato editato
+in-place** (rispetta il rate limit Telegram, ~1 edit/s):
+
+- **In-process** (`agent.run(stream=True, stream_events=True)`): itera gli eventi
+  `ToolCallStarted` / `ToolCallCompleted` / `ToolCallError` (campo `ev.tool` →
+  `tool_name` + `tool_args`) e `RunContent` (delta del contenuto finale, da
+  concatenare). Mostra `⏳ <comando>` → `✓` man mano che gli step girano.
+- **AgentOS via HTTP**: stessa idea ma con `stream: "true"` nella POST a
+  `/teams/{id}/runs` e parsing degli eventi SSE; mappa i tool-event sullo stesso
+  messaggio di stato.
+
+Effetto: l'utente *vede cosa sta facendo l'agente sotto* (quale comando, quale
+skill) invece di fissare uno spinner — la latenza diventa trasparente, non morta.
+
+> Riduci anche i giri del loop: `tool_call_limit` come backstop anti-spirale, e
+> `num_history_runs` basso per tenere il contesto (e quindi ogni chiamata) snello.
+> A livello di prompt, istruisci l'agente a **raggruppare comandi shell correlati
+> in una sola chiamata** invece di tante sequenziali (ogni `run_shell` paga il
+> cold-start dell'interprete).
 
 ---
 
