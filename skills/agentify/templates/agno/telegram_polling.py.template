@@ -1,10 +1,16 @@
-"""Bot Telegram in modalità polling per {{ identity.name }}.
+"""Bot Telegram in modalità polling per {{ identity.name }} — con streaming live.
 
-Riceve messaggi da Telegram via getUpdates (polling), li forwarda all'AgentOS
-HTTP API (POST /teams/{team_id}/runs), riceve la risposta e la rimanda all'utente.
+Riceve messaggi da Telegram via getUpdates (polling) e li inoltra all'AgentOS
+HTTP API in **streaming** (POST /teams/{team_id}/runs con stream=true). Mentre il
+loop gira, aggancia gli eventi SSE reali (ToolCallStarted/Completed, RunContent,
+RunCompleted) e li proietta su UN messaggio di stato editato in-place: l'utente
+*vede cosa sta facendo l'agente sotto* invece di fissare uno spinner.
+
+Formato SSE di AgentOS (un evento = blocco separato da riga vuota):
+    event: <EventName>
+    data: {...json con campi 'content', 'tool', ...}
 
 Vantaggio: non richiede URL pubblico (no ngrok/cloudflared). Funziona da localhost.
-Svantaggio: ogni messaggio fa due hop (Telegram → bot → AgentOS).
 
 Usage:
     # 1. AgentOS server attivo (es. python -m agent.main)
@@ -20,8 +26,10 @@ Env richiesto:
 """
 
 from __future__ import annotations
+import json
 import os
 import sys
+import time
 import logging
 
 if hasattr(sys.stdout, "reconfigure"):
@@ -45,6 +53,7 @@ ALLOWED_USERS = {
     int(x) for x in os.getenv("TELEGRAM_ALLOWED_USERS", "").split(",")
     if x.strip().isdigit()
 }
+EDIT_THROTTLE = 1.2  # s minimi tra due edit del messaggio di stato (rate limit Telegram)
 
 if not TOKEN:
     sys.exit("ERRORE: TELEGRAM_BOT_TOKEN non settato in .env")
@@ -55,28 +64,55 @@ def is_allowed(user_id: int) -> bool:
     return not ALLOWED_USERS or user_id in ALLOWED_USERS
 
 
-def query_agentos(message: str, session_id: str, timeout: int = 300) -> tuple[bool, str]:
-    """Chiama POST /teams/{team_id}/runs. Ritorna (success, content)."""
+def stream_agentos(message: str, session_id: str, timeout: int = 300):
+    """Generator: POST .../runs con stream=true, yielda (event_name, data_dict).
+
+    In caso di errore di trasporto yielda ('__error__', {'content': msg}).
+    """
     try:
         resp = requests.post(
             f"{AGENTOS_URL}/teams/{TEAM_ID}/runs",
             files={
                 "message": (None, message),
-                "stream": (None, "false"),
-                "monitor": (None, "false"),
+                "stream": (None, "true"),
                 "session_id": (None, session_id),
             },
+            stream=True,
             timeout=timeout,
         )
     except requests.RequestException as e:
-        return False, f"AgentOS irraggiungibile: {e}"
+        yield "__error__", {"content": f"AgentOS irraggiungibile: {e}"}
+        return
     if resp.status_code != 200:
-        return False, f"AgentOS HTTP {resp.status_code}: {resp.text[:300]}"
-    try:
-        data = resp.json()
-    except ValueError:
-        return False, f"Risposta non-JSON: {resp.text[:300]}"
-    return True, data.get("content", "(risposta vuota)")
+        yield "__error__", {"content": f"AgentOS HTTP {resp.status_code}: {resp.text[:300]}"}
+        return
+
+    event_name = None
+    for raw in resp.iter_lines(decode_unicode=True):
+        if not raw:
+            event_name = None  # riga vuota = fine blocco evento SSE
+            continue
+        line = raw.strip()
+        if line.startswith("event:"):
+            event_name = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            payload = line[len("data:"):].strip()
+            try:
+                data = json.loads(payload)
+            except ValueError:
+                continue
+            yield (event_name or data.get("event") or "message"), data
+
+
+def tool_label(data: dict) -> str:
+    """Etichetta leggibile del tool in esecuzione, dal campo 'tool' dell'evento."""
+    tool = data.get("tool") or {}
+    name = tool.get("tool_name") or "tool"
+    args = tool.get("tool_args") or {}
+    if args:
+        first = str(next(iter(args.values()))).replace("\n", " ⏎ ").replace("`", "")
+        return f"{name} `{first[:70]}`"
+    return name
 
 
 def split_for_telegram(text: str, limit: int = 4000) -> list[str]:
@@ -125,7 +161,7 @@ def cmd_help(msg):
         "/start — saluto + descrizione agente\n"
         "/new — nuova conversazione (reset memoria)\n"
         "/help — questo messaggio\n\n"
-        "Scrivi qualsiasi richiesta, l'agente la elabora."
+        "Scrivi qualsiasi richiesta, l'agente la elabora (vedrai gli step live)."
     ))
 
 
@@ -137,23 +173,75 @@ def handle_text(msg):
         return
 
     session_id = f"telegram_{user_id}"
+    chat_id = msg.chat.id
     log.info(f"[user {user_id}] {msg.text[:80]}")
 
-    bot.send_chat_action(msg.chat.id, "typing")
-    ok, content = query_agentos(msg.text, session_id)
-    if not ok:
-        bot.reply_to(msg, f"⚠️ {content}")
-        log.error(f"[user {user_id}] {content}")
+    status = bot.send_message(chat_id, "🔧 Elaboro…")
+    steps: list[str] = []
+    content_acc: list[str] = []
+    final_content = ""
+    last_edit = [0.0]
+
+    def render() -> str:
+        body = "\n".join(steps[-7:]) if steps else "_avvio…_"
+        return "🔧 *Sto lavorando…*\n" + body
+
+    def flush(force: bool = False) -> None:
+        now = time.monotonic()
+        if not force and now - last_edit[0] < EDIT_THROTTLE:
+            return
+        last_edit[0] = now
+        try:
+            bot.edit_message_text(render(), chat_id, status.message_id, parse_mode="Markdown")
+        except Exception:
+            pass  # rate-limit / "not modified" => ignora
+
+    try:
+        for name, data in stream_agentos(msg.text, session_id):
+            if name == "__error__":
+                bot.edit_message_text(f"⚠️ {data.get('content')}", chat_id, status.message_id)
+                log.error(f"[user {user_id}] {data.get('content')}")
+                return
+            if "ToolCallStarted" in name:
+                steps.append(f"⏳ {tool_label(data)}")
+                flush()
+            elif "ToolCallCompleted" in name:
+                if steps and steps[-1].startswith("⏳"):
+                    steps[-1] = "✓" + steps[-1][1:]
+                flush()
+            elif "ToolCallError" in name:
+                if steps and steps[-1].startswith("⏳"):
+                    steps[-1] = "✗" + steps[-1][1:]
+                flush(force=True)
+            elif name.endswith("RunContent"):
+                c = data.get("content")
+                if isinstance(c, str):
+                    content_acc.append(c)
+            elif name.endswith("RunCompleted"):
+                c = data.get("content")
+                if isinstance(c, str) and c.strip():
+                    final_content = c  # l'ultima completion (quella del team) vince
+    except Exception as e:
+        bot.edit_message_text(f"⚠️ Errore stream: {e}", chat_id, status.message_id)
+        log.error(f"[user {user_id}] stream error: {e}")
         return
 
+    content = final_content or "".join(content_acc).strip()
+    try:
+        bot.edit_message_text("✅ Completato.", chat_id, status.message_id)
+    except Exception:
+        pass
+    if not content:
+        bot.send_message(chat_id, "(risposta vuota)")
+        return
     for chunk in split_for_telegram(content):
-        bot.reply_to(msg, chunk)
+        bot.send_message(chat_id, chunk)
     log.info(f"[user {user_id}] response sent ({len(content)} chars)")
 
 
 def main():
     me = bot.get_me()
-    print(f"\n[bot] @{me.username} online")
+    print(f"\n[bot] @{me.username} online (streaming live)")
     print(f"[bot] AgentOS: {AGENTOS_URL}")
     print(f"[bot] team: {TEAM_ID}")
     print(f"[bot] whitelist: {sorted(ALLOWED_USERS) if ALLOWED_USERS else 'TUTTI (nessuna restrizione)'}")

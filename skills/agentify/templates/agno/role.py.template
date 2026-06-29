@@ -28,7 +28,8 @@ def build_{{ role_name }}(cfg: dict, base_instructions: str, common_tools: list)
     return Agent(
         name="{{ role_name | capitalize }}",
         role=cfg["description"],
-        model=resolve_model(cfg["default"]),
+        # fast=true nel manifesto => reasoning ridotto (latenza minore).
+        model=resolve_model(cfg["default"], fast=cfg.get("fast", False)),
         instructions=base_instructions + "\n\n" + {{ role_name | upper }}_INSTRUCTIONS,
         tools=common_tools,
     )

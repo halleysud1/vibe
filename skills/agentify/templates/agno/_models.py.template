@@ -3,22 +3,40 @@
 Recognized prefixes: claude-, gpt-, gemini-, deepseek-.
 
 NOTA: questo file è generico — non contiene placeholder. Copialo as-is nel target.
+
+REATTIVITÀ: i ruoli marcati `fast: true` nel manifesto passano ``fast=True`` qui.
+Sui modelli *thinking* (Gemini 3.x, OpenAI o-series/gpt-5) riduce il budget di
+ragionamento — ogni chiamata del loop diventa più rapida. Per i ruoli
+conversazionali/di scrittura (writer, responder) è quasi sempre la scelta giusta.
 """
 
 from __future__ import annotations
 
 
-def resolve_model(model_id: str):
-    """Map a model id (e.g. 'claude-opus-4-8') to an Agno model instance."""
+def resolve_model(model_id: str, *, fast: bool = False):
+    """Map a model id (e.g. 'claude-opus-4-8') to an Agno model instance.
+
+    ``fast=True``: minimizza il reasoning sui modelli che lo supportano, per
+    latenza più bassa. Su modelli non-thinking non ha effetto.
+    """
     if model_id.startswith("claude-"):
         from agno.models.anthropic import Claude
+        # Claude: l'extended thinking è opt-in (off di default) => già "fast".
         return Claude(id=model_id)
     if model_id.startswith("gpt-"):
         from agno.models.openai import OpenAIChat
-        return OpenAIChat(id=model_id)
+        kwargs = {}
+        # reasoning_effort vale solo per i modelli di reasoning (o-series, gpt-5).
+        if fast and ("gpt-5" in model_id or model_id.startswith(("o1", "o3", "o4"))):
+            kwargs["reasoning_effort"] = "low"
+        return OpenAIChat(id=model_id, **kwargs)
     if model_id.startswith("gemini-"):
         from agno.models.google import Gemini
-        return Gemini(id=model_id)
+        kwargs = {}
+        if fast:
+            # thinking_level: parametro Gemini 3.x. Sui 2.5 usa thinking_budget.
+            kwargs["thinking_level"] = "low"
+        return Gemini(id=model_id, **kwargs)
     if model_id.startswith("deepseek-"):
         from agno.models.deepseek import DeepSeek
         return DeepSeek(id=model_id)

@@ -65,6 +65,7 @@ models:
     {% for role_name, role_cfg in models.roles.items() %}{{ role_name }}:
       description: "{{ role_cfg.description }}"
       default: {{ role_cfg.default }}
+      fast: {{ role_cfg.fast | default(false) | lower }}   # true => reasoning ridotto, latenza minore (ruoli conversazionali/scrittura)
       candidates:
         {% for c in role_cfg.candidates %}- {{ c }}
         {% endfor %}

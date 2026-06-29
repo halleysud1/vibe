@@ -64,7 +64,10 @@ def build_team() -> Team:
     {% for r in models.roles.keys() %}{% if r != 'orchestrator' %}{{ r }} = build_{{ r }}(role_cfg["{{ r }}"], instructions, common_tools)
     {% endif %}{% endfor %}
 
-    orchestrator_model = resolve_model(role_cfg["orchestrator"]["default"])
+    orchestrator_model = resolve_model(
+        role_cfg["orchestrator"]["default"],
+        fast=role_cfg["orchestrator"].get("fast", False),
+    )
     team_mode = manifest["models"].get("team_mode", "coordinate")
 
     return Team(
@@ -97,7 +100,8 @@ def build_agentos() -> AgentOS:
     telegram_token = os.getenv("TELEGRAM_BOT_TOKEN")
     if telegram_token:
         from agno.os.interfaces.telegram import Telegram
-        interfaces.append(Telegram(team=team, token=telegram_token, streaming=False))
+        # streaming=True: la risposta arriva progressivamente (reattività percepita).
+        interfaces.append(Telegram(team=team, token=telegram_token, streaming=True))
         print(f"[telegram] interface attivata (token: ...{telegram_token[-8:]})")
 
     return AgentOS(

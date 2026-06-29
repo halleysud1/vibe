@@ -140,6 +140,10 @@ Per ogni ruolo, chiedi all'utente:
 - **Capability richieste al modello** (es. "tool calling solido", "italiano fluente", "second opinion indipendente")
 - **Default model**: il modello consigliato
 - **Candidates**: lista di alternative per A/B test (utente sperimenterà)
+- **`fast`** (reattività): marca `true` i ruoli conversazionali/di scrittura (writer,
+  responder). Sui modelli *thinking* (Gemini 3.x, OpenAI o-series/gpt-5) riduce il
+  budget di reasoning ⇒ latenza minore a ogni chiamata del loop. Lascia `false`
+  per orchestrator/analyzer/critic, che del reasoning hanno bisogno.
 
 → **Output**: sezione `models.roles` del manifesto.
 
@@ -206,7 +210,7 @@ I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja
 | `agno/workflow_*.py.template` | ALTA — molto specifico al dominio |
 | `agno/Dockerfile.agent.template` | BASSA — può essere copia identica |
 | `agno/runbook.md.template` | MEDIA — cambiano comandi specifici |
-| `agno/telegram_polling.py.template` | BASSA — quasi-copia, parametrizza solo team_id e env vars |
+| `agno/telegram_polling.py.template` | MEDIA — consuma lo stream SSE di AgentOS e mostra gli step live; parametrizza team_id/env vars |
 | `agno/telegram_setup.md` | BASSA — copia diretta come guida nel progetto target |
 
 ### Interfaces & chat layer (opzionale)
@@ -221,6 +225,14 @@ chat consumer-facing. Pattern raccomandato: **Telegram**.
 
 Pattern Agno: `agno.os.interfaces.{telegram, slack, whatsapp, a2a, agui}`. v1.1 scaffolda
 Telegram; le altre interface seguono lo stesso schema (sostituibili dall'utente).
+
+**Reattività (streaming)**: entrambe le modalità sono in streaming di default —
+l'interface nativa con `streaming=True`, e il polling bot consumando lo stream SSE
+di AgentOS (`POST .../runs` con `stream=true`). Il polling bot proietta gli eventi
+del loop (`ToolCallStarted/Completed`, `RunContent`) su **un messaggio di stato
+editato in-place** (throttle ~1 edit/s per il rate limit Telegram): l'utente vede
+gli step mentre accadono invece di uno spinner muto. Combinala con i ruoli `fast`
+(Fase 3) per ridurre anche la latenza reale, non solo quella percepita.
 
 **Sicurezza** (correlato al boundary "MAI output verso esterni"): chi può scrivere al bot
 accede all'agente. Whitelist via `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
