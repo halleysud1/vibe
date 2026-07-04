@@ -1,7 +1,16 @@
-"""Convert Markdown files to PDF using markdown-pdf (pure-python).
+"""Convert Markdown files to PDF.
 
-Optionally appends an AI-generated summary section at the end of the PDF
-(via Gemini), without modifying the source markdown file.
+Two backends:
+
+* ``chromium`` (default when available) — high-fidelity: Markdown -> HTML with
+  a professional CSS theme (optionally Gemini-authored) -> headless Chromium
+  print-to-PDF. Styled tables, callouts, syntax-highlighted code, rendered
+  ``mermaid`` diagrams, running footer with page numbers. Requires
+  ``playwright`` + ``playwright install chromium``.
+* ``markdown-pdf`` (pure-python fallback) — PyMuPDF; limited CSS, no diagrams.
+
+Optionally appends an AI-generated summary section at the end of the PDF (via
+Gemini), without modifying the source markdown file.
 """
 
 from __future__ import annotations
@@ -11,11 +20,9 @@ import os
 import sys
 from pathlib import Path
 
-from markdown_pdf import MarkdownPdf, Section
-
-
 SKILL_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CSS = SKILL_DIR / "styles" / "default.css"
+THEME_CSS = SKILL_DIR / "styles" / "theme.css"
 
 DEFAULT_AI_MODEL = "gemini-3.5-flash"
 
@@ -49,13 +56,33 @@ NON aggiungere altre sezioni oltre a queste quattro. NON copiare lunghi blocchi 
 testo dal documento. NON inserire emoji. Cita riferimenti puntuali (path file, nomi
 funzioni, valori) quando aggiungono precisione."""
 
+THEME_SYSTEM_PROMPT = (
+    "Sei un art director esperto di tipografia editoriale e graphic design per "
+    "documenti tecnici e finanziari. Produci CSS print-ready di alta qualita'."
+)
+
+THEME_USER_TEMPLATE = """Genera un foglio di stile CSS per impaginare in PDF (A4, stampa via Chromium) un documento Markdown convertito in HTML.
+
+Requisiti NON negoziabili:
+- Solo CSS valido. NIENTE testo fuori dal CSS, niente markdown fence, niente commenti esplicativi.
+- Stile professionale, pulito, leggibile.
+- Stili per: body, h1-h4, p, ul/ol/li, a, strong, em, hr, table/thead/th/td (zebra striping), code, pre, blockquote (callout), img, .mermaid.
+- `@page {{ size: A4; margin: ... }}` e `-webkit-print-color-adjust: exact`.
+- `page-break-inside: avoid` su table e pre; `page-break-after: avoid` sui heading.
+- Solo font di sistema (Segoe UI, Helvetica, Georgia, Consolas...). NIENTE @import / web font esterni.
+- line-height ~1.5, tabelle eleganti con header a contrasto.
+
+Base da migliorare (non limitarti a copiarla):
+{base_css}
+
+Tono del documento (per calibrare l'estetica):
+{doc_excerpt}
+
+Rispondi SOLO con il CSS."""
+
 
 def strip_frontmatter(text: str) -> str:
-    """Remove leading YAML front-matter (--- ... ---) if present.
-
-    markdown-pdf does not handle YAML front-matter and mistakes the fences
-    for thematic breaks, which breaks TOC generation.
-    """
+    """Remove leading YAML front-matter (--- ... ---) if present."""
     if not text.startswith("---"):
         return text
     lines = text.splitlines(keepends=True)
@@ -79,15 +106,18 @@ def call_gemini(system_prompt: str, user_prompt: str, model: str) -> str | None:
     """Call Gemini and return text. Returns None on any failure (after warn)."""
     try:
         try:
-            from dotenv import load_dotenv
-            load_dotenv()
+            from dotenv import find_dotenv, load_dotenv
+
+            # Search from the invocation CWD (the project), not the plugin dir
+            # where this script lives.
+            load_dotenv(find_dotenv(usecwd=True))
         except ImportError:
             pass
 
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             print(
-                "Warning: GEMINI_API_KEY non configurata, sintesi AI saltata.",
+                "Warning: GEMINI_API_KEY non configurata, funzione AI saltata.",
                 file=sys.stderr,
             )
             return None
@@ -104,12 +134,12 @@ def call_gemini(system_prompt: str, user_prompt: str, model: str) -> str | None:
         return r.text
     except ImportError:
         print(
-            "Warning: pacchetto google-genai non installato, sintesi AI saltata.",
+            "Warning: pacchetto google-genai non installato, funzione AI saltata.",
             file=sys.stderr,
         )
         return None
     except Exception as e:
-        print(f"Warning: errore chiamata Gemini ({e}), sintesi AI saltata.", file=sys.stderr)
+        print(f"Warning: errore chiamata Gemini ({e}), funzione AI saltata.", file=sys.stderr)
         return None
 
 
@@ -129,6 +159,123 @@ def wrap_summary_md(summary_md: str, model: str) -> str:
     )
 
 
+def _strip_css_fence(text: str) -> str:
+    import re
+
+    text = text.strip()
+    m = re.search(r"```(?:css)?\s*(.*?)```", text, re.DOTALL)
+    return m.group(1).strip() if m else text
+
+
+def build_gemini_theme(doc_excerpt: str, base_css: str, model: str) -> str | None:
+    """Ask Gemini for a bespoke print CSS theme. Returns None on failure."""
+    user = THEME_USER_TEMPLATE.format(base_css=base_css, doc_excerpt=doc_excerpt[:2500])
+    out = call_gemini(THEME_SYSTEM_PROMPT, user, model)
+    if not out:
+        return None
+    css = _strip_css_fence(out)
+    if "{" in css and "}" in css and len(css) > 200:
+        return css
+    print("Warning: tema Gemini non plausibile, uso tema di default.", file=sys.stderr)
+    return None
+
+
+def _chromium_engine():
+    """Import the vendored Chromium engine, or None if unavailable."""
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import html_engine  # type: ignore
+
+        return html_engine
+    except ImportError:
+        return None
+
+
+def _resolve_engine(requested: str) -> str:
+    """Resolve 'auto' to 'chromium' when usable, else 'markdown-pdf'."""
+    if requested != "auto":
+        return requested
+    engine = _chromium_engine()
+    if engine is not None and engine.chromium_available():
+        return "chromium"
+    return "markdown-pdf"
+
+
+def _render_chromium(
+    text: str,
+    summary_md: str | None,
+    output_path: Path,
+    css_text: str | None,
+    title: str | None,
+    gemini_theme: bool,
+    ai_model: str,
+) -> Path:
+    engine = _chromium_engine()
+    if engine is None:
+        raise SystemExit("Backend chromium richiesto ma html_engine non importabile.")
+
+    combined = text
+    if summary_md:
+        combined = f"{text}\n\n<div style='page-break-after: always;'></div>\n\n{summary_md}"
+
+    theme_css = css_text or engine.DEFAULT_THEME_CSS
+    if gemini_theme:
+        gen = build_gemini_theme(text, engine.DEFAULT_THEME_CSS, ai_model)
+        if gen:
+            theme_css = gen
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    return engine.render_markdown_to_pdf(
+        combined, output_path, title=title, theme_css=theme_css
+    )
+
+
+def _render_markdown_pdf(
+    text: str,
+    summary_md: str | None,
+    output_path: Path,
+    css_text: str | None,
+    toc_level: int,
+    mode: str,
+    paper_size: str,
+    title: str | None,
+    author: str | None,
+    root: str,
+) -> Path:
+    from markdown_pdf import MarkdownPdf, Section
+
+    def build_pdf(use_toc_level: int) -> MarkdownPdf:
+        pdf = MarkdownPdf(toc_level=use_toc_level, mode=mode, optimize=True)
+        pdf.meta["title"] = title or output_path.stem
+        if author:
+            pdf.meta["author"] = author
+        pdf.add_section(
+            Section(text, toc=(use_toc_level > 0), root=root, paper_size=paper_size),
+            user_css=css_text,
+        )
+        if summary_md:
+            pdf.add_section(
+                Section(summary_md, toc=False, root=root, paper_size=paper_size),
+                user_css=css_text,
+            )
+        return pdf
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        build_pdf(toc_level).save(output_path)
+    except ValueError as e:
+        if toc_level > 0 and "hierarchy level" in str(e):
+            print(
+                f"Warning: TOC non costruibile per {output_path.name} "
+                f"(headings non lineari): rigenero senza TOC.",
+                file=sys.stderr,
+            )
+            build_pdf(0).save(output_path)
+        else:
+            raise
+    return output_path
+
+
 def convert_one(
     input_path: Path,
     output_path: Path,
@@ -140,6 +287,8 @@ def convert_one(
     author: str | None,
     ai_summary: bool,
     ai_model: str,
+    engine: str,
+    gemini_theme: bool,
 ) -> Path:
     if not input_path.is_file():
         raise SystemExit(f"Input file not found: {input_path}")
@@ -153,133 +302,79 @@ def convert_one(
         if summary:
             summary_md = wrap_summary_md(summary, ai_model)
 
-    def build_pdf(use_toc_level: int) -> MarkdownPdf:
-        pdf = MarkdownPdf(toc_level=use_toc_level, mode=mode, optimize=True)
-        pdf.meta["title"] = title or input_path.stem
-        if author:
-            pdf.meta["author"] = author
-
-        main_section = Section(
-            text,
-            toc=(use_toc_level > 0),
-            root=str(input_path.parent),
-            paper_size=paper_size,
+    resolved = _resolve_engine(engine)
+    if resolved == "chromium":
+        return _render_chromium(
+            text, summary_md, output_path, css_text, title, gemini_theme, ai_model
         )
-        pdf.add_section(main_section, user_css=css_text)
-
-        if summary_md:
-            summary_section = Section(
-                summary_md,
-                toc=False,
-                root=str(input_path.parent),
-                paper_size=paper_size,
-            )
-            pdf.add_section(summary_section, user_css=css_text)
-        return pdf
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        build_pdf(toc_level).save(output_path)
-    except ValueError as e:
-        if toc_level > 0 and "hierarchy level" in str(e):
-            print(
-                f"Warning: TOC non costruibile per {input_path.name} "
-                f"(headings non lineari): rigenero senza TOC.",
-                file=sys.stderr,
-            )
-            build_pdf(0).save(output_path)
-        else:
-            raise
-    return output_path
+    return _render_markdown_pdf(
+        text, summary_md, output_path, css_text, toc_level, mode, paper_size,
+        title, author, str(input_path.parent),
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(
-        description="Convert Markdown to PDF (pure-python via markdown-pdf).",
+        description="Convert Markdown to PDF (Chromium hi-fi or pure-python).",
+    )
+    p.add_argument("inputs", nargs="+", type=Path, help="Markdown file(s) to convert.")
+    p.add_argument(
+        "-o", "--output", type=Path, default=None,
+        help="Output PDF path. If omitted, replaces .md with .pdf. Ignored in batch.",
+    )
+    p.add_argument("--out-dir", type=Path, default=None, help="Directory for batch outputs.")
+    p.add_argument(
+        "--engine", choices=("auto", "chromium", "markdown-pdf"), default="auto",
+        help="Rendering backend. 'auto' uses Chromium when available, else markdown-pdf.",
     )
     p.add_argument(
-        "inputs",
-        nargs="+",
-        type=Path,
-        help="Markdown file(s) to convert. Pass multiple paths for batch mode.",
+        "--gemini-theme", action="store_true",
+        help="Let Gemini author a bespoke CSS theme (chromium engine). Requires GEMINI_API_KEY.",
     )
     p.add_argument(
-        "-o",
-        "--output",
-        type=Path,
-        default=None,
-        help=(
-            "Output PDF path. If omitted, replaces .md extension with .pdf "
-            "next to the source. Ignored in batch mode."
-        ),
+        "--css", type=Path, default=None,
+        help="Custom CSS file. Default: styles/theme.css (chromium) or styles/default.css.",
     )
+    p.add_argument("--no-css", action="store_true", help="Disable any CSS (bare defaults).")
+    p.add_argument("--toc-level", type=int, default=3, help="TOC depth (0 disables). markdown-pdf only.")
     p.add_argument(
-        "--out-dir",
-        type=Path,
-        default=None,
-        help="Directory for batch outputs (one PDF per input).",
+        "--mode", choices=("default", "commonmark", "zero"), default="commonmark",
+        help="markdown-it preset (markdown-pdf engine).",
     )
-    p.add_argument(
-        "--css",
-        type=Path,
-        default=DEFAULT_CSS,
-        help=f"Custom CSS file. Default: {DEFAULT_CSS.name} bundled with the skill.",
-    )
-    p.add_argument(
-        "--no-css",
-        action="store_true",
-        help="Disable any CSS (use markdown-pdf bare defaults).",
-    )
-    p.add_argument(
-        "--toc-level",
-        type=int,
-        default=3,
-        help="Heading depth included in TOC (0 disables TOC). Default: 3.",
-    )
-    p.add_argument(
-        "--mode",
-        choices=("default", "commonmark", "zero"),
-        default="commonmark",
-        help=(
-            "markdown-it preset. 'commonmark' is strict CommonMark, "
-            "'default' adds linkify/typographer, 'zero' is minimal. "
-            "Tables are always enabled by markdown-pdf."
-        ),
-    )
-    p.add_argument(
-        "--paper-size",
-        default="A4",
-        help="Paper size, e.g. A4, A5, Letter. Default: A4.",
-    )
+    p.add_argument("--paper-size", default="A4", help="Paper size (markdown-pdf engine).")
     p.add_argument("--title", default=None, help="PDF metadata title.")
     p.add_argument("--author", default=None, help="PDF metadata author.")
     p.add_argument(
-        "--ai-summary",
-        action="store_true",
-        help=(
-            "Append an AI-generated summary section at the end of the PDF "
-            "(does NOT modify the source .md). Requires GEMINI_API_KEY."
-        ),
+        "--ai-summary", action="store_true",
+        help="Append an AI-generated summary section at the end. Requires GEMINI_API_KEY.",
     )
-    p.add_argument(
-        "--ai-model",
-        default=DEFAULT_AI_MODEL,
-        help=f"Gemini model for the summary. Default: {DEFAULT_AI_MODEL}.",
-    )
+    p.add_argument("--ai-model", default=DEFAULT_AI_MODEL, help=f"Gemini model. Default: {DEFAULT_AI_MODEL}.")
     return p.parse_args(argv)
+
+
+def _resolve_css(args: argparse.Namespace, engine: str) -> str | None:
+    if args.no_css:
+        return None
+    if args.css is not None:
+        return load_css(args.css)
+    # Default CSS depends on the engine.
+    if engine == "markdown-pdf" and DEFAULT_CSS.is_file():
+        return load_css(DEFAULT_CSS)
+    if engine == "chromium" and THEME_CSS.is_file():
+        return load_css(THEME_CSS)
+    return None  # chromium uses its built-in DEFAULT_THEME_CSS
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
 
-    css_text = None if args.no_css else load_css(args.css)
-
     inputs: list[Path] = args.inputs
     batch = len(inputs) > 1
-
     if batch and args.output:
         print("Warning: --output ignored in batch mode; use --out-dir.", file=sys.stderr)
+
+    resolved_engine = _resolve_engine(args.engine)
+    css_text = _resolve_css(args, resolved_engine)
 
     for src in inputs:
         if batch or args.out_dir:
@@ -299,8 +394,10 @@ def main(argv: list[str] | None = None) -> int:
             author=args.author,
             ai_summary=args.ai_summary,
             ai_model=args.ai_model,
+            engine=args.engine,
+            gemini_theme=args.gemini_theme,
         )
-        print(f"OK: {src} -> {result}")
+        print(f"OK [{resolved_engine}]: {src} -> {result}")
 
     return 0
 

@@ -1,0 +1,127 @@
+/* md-to-pdf — professional print theme (ADR-015). Use with --engine chromium. */
+:root {
+  --ink:        #1a2433;
+  --navy:       #0a192f;
+  --navy-soft:  #112240;
+  --accent:     #c9a227;   /* oro sobrio */
+  --rule:       #e4e8ee;
+  --muted:      #5b6675;
+  --code-bg:    #f5f7fa;
+  --callout-bg: #f4f6f8;
+  --table-zebra:#f7f9fc;
+}
+
+@page { size: A4; margin: 20mm 18mm 22mm 18mm; }
+
+html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+body {
+  font-family: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--ink);
+  font-size: 10.5pt;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ---- Headings ---------------------------------------------------------- */
+h1, h2, h3, h4 {
+  font-family: "Segoe UI Semibold", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  color: var(--navy);
+  line-height: 1.25;
+  margin: 1.4em 0 0.5em;
+  page-break-after: avoid;
+}
+h1 {
+  font-size: 22pt;
+  letter-spacing: -0.01em;
+  border-bottom: 2.5px solid var(--accent);
+  padding-bottom: 0.25em;
+  margin-top: 0;
+}
+h2 {
+  font-size: 15pt;
+  color: var(--navy-soft);
+  border-bottom: 1px solid var(--rule);
+  padding-bottom: 0.2em;
+}
+h3 { font-size: 12.5pt; color: #233554; }
+h4 { font-size: 11pt; color: #33415c; text-transform: uppercase; letter-spacing: 0.04em; }
+
+p { margin: 0.55em 0; }
+a { color: var(--navy-soft); text-decoration: none; border-bottom: 1px solid var(--rule); }
+strong { color: var(--navy); }
+em { color: var(--muted); }
+
+ul, ol { margin: 0.5em 0; padding-left: 1.4em; }
+li { margin: 0.2em 0; }
+li::marker { color: var(--accent); }
+
+hr { border: 0; height: 1px; background: var(--rule); margin: 1.8em 0; }
+
+/* ---- Tables ------------------------------------------------------------ */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1em 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+thead th {
+  background: var(--navy);
+  color: #fff;
+  font-weight: 600;
+  text-align: left;
+  padding: 9px 12px;
+}
+td { padding: 8px 12px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+tbody tr:nth-child(even) { background: var(--table-zebra); }
+table strong { color: var(--navy); }
+
+/* ---- Code -------------------------------------------------------------- */
+code {
+  font-family: "Cascadia Code", "Consolas", "Courier New", monospace;
+  font-size: 9pt;
+  background: var(--code-bg);
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  color: #b03060;
+}
+pre {
+  background: var(--code-bg);
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--navy-soft);
+  border-radius: 6px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 8.8pt;
+  line-height: 1.45;
+  page-break-inside: avoid;
+}
+pre code { background: none; padding: 0; color: inherit; border-radius: 0; }
+
+/* ---- Blockquotes / callouts ------------------------------------------- */
+blockquote {
+  border-left: 3px solid var(--accent);
+  background: var(--callout-bg);
+  margin: 1.1em 0;
+  padding: 0.6em 1em;
+  color: #44505f;
+  border-radius: 0 6px 6px 0;
+}
+blockquote p { margin: 0.2em 0; }
+
+/* ---- Media / diagrams -------------------------------------------------- */
+img { max-width: 100%; height: auto; }
+pre.mermaid, .mermaid {
+  background: none;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  text-align: center;
+  margin: 1.4em 0;
+  page-break-inside: avoid;
+}
+.mermaid svg { max-width: 100%; height: auto; }
+
+/* Force page breaks where the source asks for them. */
+div[style*="page-break-after"] { page-break-after: always; }
