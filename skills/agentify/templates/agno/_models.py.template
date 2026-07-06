@@ -1,28 +1,83 @@
 """Model factory: maps model id strings to Agno model instances.
 
-Recognized prefixes: claude-, gpt-, gemini-, deepseek-.
+Recognized prefixes: claude-, gpt-, gemini-, deepseek-, glm-.
+
+Reasoning: `resolve_model(id, reasoning=...)` accetta "low" | "medium" | "high".
+Il livello NON e' fissato per ruolo: lo decide l'Orchestrator task per task
+(vedi ORCHESTRATOR_INSTRUCTIONS e models.reasoning_policy nel manifesto).
+I kwargs provider-specifici sono best-effort: se la versione di Agno/provider
+non li supporta, il factory ripiega sul modello senza parametro (verifica col
+bench, Fase 5.4).
 
 NOTA: questo file è generico — non contiene placeholder. Copialo as-is nel target.
 """
 
 from __future__ import annotations
 
+# Budget di thinking per i provider che ragionano a token
+_THINKING_TOKENS = {"low": 1024, "medium": 8192, "high": 24576}
 
-def resolve_model(model_id: str):
-    """Map a model id (e.g. 'claude-opus-4-8') to an Agno model instance."""
+
+def _provider(model_id: str):
     if model_id.startswith("claude-"):
         from agno.models.anthropic import Claude
-        return Claude(id=model_id)
+        return Claude
     if model_id.startswith("gpt-"):
         from agno.models.openai import OpenAIChat
-        return OpenAIChat(id=model_id)
+        return OpenAIChat
     if model_id.startswith("gemini-"):
         from agno.models.google import Gemini
-        return Gemini(id=model_id)
+        return Gemini
     if model_id.startswith("deepseek-"):
         from agno.models.deepseek import DeepSeek
-        return DeepSeek(id=model_id)
+        return DeepSeek
+    if model_id.startswith("glm-"):
+        # GLM (Zhipu / Z.ai): endpoint OpenAI-compatible.
+        # Env richieste: ZHIPU_API_KEY (+ opzionale ZHIPU_BASE_URL).
+        import os
+        from agno.models.openai.like import OpenAILike
+
+        class _Zhipu(OpenAILike):
+            def __init__(self, **kwargs):
+                kwargs.setdefault("api_key", os.getenv("ZHIPU_API_KEY"))
+                kwargs.setdefault(
+                    "base_url",
+                    os.getenv("ZHIPU_BASE_URL", "https://api.z.ai/api/paas/v4"),
+                )
+                super().__init__(**kwargs)
+
+        return _Zhipu
     raise ValueError(
         f"Unknown model id: '{model_id}'. "
         "Aggiungi un mapping in agent/_models.py per il provider corrispondente."
     )
+
+
+def _reasoning_kwargs(model_id: str, reasoning: str) -> dict:
+    """Traduce low/medium/high nel parametro del provider (best-effort)."""
+    if model_id.startswith("gpt-"):
+        return {"reasoning_effort": reasoning}
+    if model_id.startswith("claude-"):
+        return {"thinking": {"type": "enabled",
+                             "budget_tokens": _THINKING_TOKENS[reasoning]}}
+    if model_id.startswith("gemini-"):
+        return {"thinking_budget": _THINKING_TOKENS[reasoning]}
+    if model_id.startswith(("deepseek-", "glm-")):
+        # deepseek-v4-* e glm-5.x: thinking on/off (niente budget graduato)
+        return {"thinking": reasoning != "low"}
+    return {}
+
+
+def resolve_model(model_id: str, reasoning: str | None = None):
+    """Map a model id (e.g. 'gemini-3.1-pro-preview') to an Agno model instance.
+
+    reasoning: None | "low" | "medium" | "high" — livello di ragionamento
+    richiesto per il task corrente (deciso dall'Orchestrator).
+    """
+    cls = _provider(model_id)
+    if reasoning:
+        try:
+            return cls(id=model_id, **_reasoning_kwargs(model_id, reasoning))
+        except TypeError:
+            pass  # provider/versione senza il parametro: fallback pulito
+    return cls(id=model_id)

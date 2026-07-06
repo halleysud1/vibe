@@ -65,7 +65,7 @@ def glob_files(pattern: str, path: str = ".") -> str:
     """
     GUARD.gate("glob", {"pattern": pattern, "path": path})
     base = _resolve(path)
-    matches = sorted(str(m.relative_to(PROJECT_ROOT)) for m in base.glob(pattern) if m.is_file())
+    matches = sorted(m.relative_to(PROJECT_ROOT).as_posix() for m in base.glob(pattern) if m.is_file())
     if len(matches) > 500:
         return "\n".join(matches[:500]) + f"\n... (+{len(matches) - 500} altri)"
     return "\n".join(matches) or "(nessun match)"
@@ -101,7 +101,7 @@ def grep_search(pattern: str, path: str = ".", include: str = "") -> str:
             try:
                 for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
                     if rx.search(line):
-                        out.append(f"{f.relative_to(PROJECT_ROOT)}:{i}:{line[:300]}")
+                        out.append(f"{f.relative_to(PROJECT_ROOT).as_posix()}:{i}:{line[:300]}")
                         count += 1
                         if count >= 200:
                             return "\n".join(out) + "\n... (limite 200 match)"

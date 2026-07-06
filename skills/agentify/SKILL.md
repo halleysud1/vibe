@@ -159,7 +159,33 @@ Per ogni ruolo, chiedi all'utente:
 - **Default model**: il modello consigliato
 - **Candidates**: lista di alternative per A/B test (utente sperimenterà)
 
-→ **Output**: sezione `models.roles` del manifesto.
+### Default model raccomandati (baseline 4.0.x)
+
+Punto di partenza per l'intervista — restano default+candidates da **provare col
+bench** (anti-pattern A4), non verità assolute:
+
+| Ruolo | Default | Candidates |
+|---|---|---|
+| Orchestrator | `gemini-3.1-pro-preview` | `glm-5.2` |
+| Analyzer | `gemini-3.1-pro-preview` | `glm-5.2` |
+| Writer | `gemini-3.5-flash` | — |
+| Critic | `deepseek-v4-pro` | — |
+| coding-agent (il "coder") | `glm-5.2` | — |
+| high-level-ops | `gemini-3.5-flash` | `glm-5.2` |
+
+Env attese: `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY` (GLM via
+endpoint OpenAI-compatible di Z.ai — vedi `_models.py`).
+
+### Reasoning policy: decide l'Orchestrator
+
+Il livello di ragionamento (`low`/`medium`/`high`) NON è fissato per ruolo: lo
+sceglie l'**Orchestrator task per task** al momento della delega (manifesto:
+`models.reasoning_policy: orchestrator`). Il factory `resolve_model(id,
+reasoning=...)` traduce il livello nel parametro del provider (thinking budget
+per Gemini/Claude, `reasoning_effort` per GPT, thinking on/off per
+DeepSeek/GLM), con fallback pulito se il provider non lo supporta.
+
+→ **Output**: sezione `models.roles` (+ `models.reasoning_policy`) del manifesto.
 
 ---
 
@@ -300,6 +326,8 @@ deploy/
 ├── docker-compose.yml
 └── runbook.md
 scripts/
+├── startagent.bat                # Windows: avvia AgentOS in background (PID file + log)
+├── stopagent.bat                 # Windows: ferma l'agente avviato da startagent.bat
 ├── ops-run.ps1                   # se schedulato su Windows (Task Scheduler)
 └── ops-run.sh                    # se schedulato su Unix (cron/systemd)
 docs/ops/                         # se high-level-ops o coding-agent schedulato (vedi Fase 3.5)
@@ -348,6 +376,7 @@ I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja
 | `agno/runbook.md.template` | MEDIA — cambiano comandi specifici |
 | `agno/telegram_polling.py.template` | BASSA — quasi-copia, parametrizza solo team_id e env vars |
 | `agno/telegram_setup.md` | BASSA — copia diretta come guida nel progetto target |
+| `agno/startagent.bat.template` / `stopagent.bat.template` | BASSA — parametrizza solo il nome agente |
 | `ops/RUNBOOK.md.template` | MEDIA — profili e comandi del progetto |
 | `ops/TASK_QUEUE.md.template` | ALTA — mission specifica |
 | `ops/STATE.md.template` / `LAST_RUN.md.template` / `OUTBOX.md.template` / `AUDIT.md.template` | BASSA — placeholder standard |
@@ -418,9 +447,12 @@ Verifica deterministica del tool-guard:
 ### 5.3 Avvio AgentOS
 
 ```bash
-python -m agent.main
+python -m agent.main          # foreground (dev)
 # → http://localhost:7777
 ```
+
+Su Windows, per l'uso quotidiano: `scripts\startagent.bat` (background, PID in
+`.agent.pid`, log in `logs/agentos.log`) e `scripts\stopagent.bat` per fermarlo.
 
 Conversazione di test in chat: "ciao, chi sei?" — l'agente dovrebbe rispondere con la sua identità definita nel manifesto.
 
