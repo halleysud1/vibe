@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.0.1] - 2026-07-06
+
+### Fixed
+- **Ripubblicazione completa della 4.0.0.** Il merge della PR #4 aveva incluso solo il primo commit del branch (race sul PR head): il pacchetto 4.0.0 finito in cache poteva mancare di due commit, reintegrati con la PR #5 — fix `_pid_alive` Windows-safe nel tool-guard (era `os.kill(pid,0)`, che su Windows termina il processo; ora `OpenProcess` via ctypes) + path posix in `glob`/`grep`, e i contenuti "startagent/stopagent.bat, baseline modelli, reasoning policy" descritti sotto nella 4.0.0. Il bump a 4.0.1 forza il refresh della cache del plugin.
+
+---
+
 ## [4.0.0] - 2026-07-06
 
 ### BREAKING — Skill rimosse (consolidate in `agentify`)
