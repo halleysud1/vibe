@@ -1,0 +1,37 @@
+"""Tool webfetch del tool layer: recupero di documentazione/risorse esterne.
+
+Descrizione adattata da opencode packages/opencode/src/tool/webfetch.txt
+@ commit eb6ff0c1 (https://github.com/anomalyco/opencode, MIT License).
+Vedi docs/OPENCODE_HARVEST.md.
+
+Default: permesso 'deny' nel guard — abilitare solo se i boundaries del
+progetto consentono traffico verso l'esterno.
+"""
+import re
+import urllib.request
+
+from agent.tools.guard import GUARD
+
+MAX_BYTES = 200_000
+
+
+def web_fetch(url: str, fmt: str = "text") -> str:
+    """Fetch content from a URL (read-only, does not modify files).
+
+    - The URL must be fully-formed and valid; http is upgraded to https.
+    - fmt: "text" (default, tags stripped) or "html" (raw).
+    - Results are truncated if very large.
+    """
+    GUARD.gate("webfetch", {"url": url})
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://"):]
+    if not url.startswith("https://"):
+        return "ERROR: URL non valido (atteso http/https)"
+    req = urllib.request.Request(url, headers={"User-Agent": "agentify-agent/1.0"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        raw = resp.read(MAX_BYTES).decode("utf-8", "replace")
+    if fmt == "html":
+        return raw
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", raw, flags=re.S | re.I)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s{2,}", " ", text).strip()[:MAX_BYTES]

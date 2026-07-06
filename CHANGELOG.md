@@ -1,5 +1,34 @@
 # Changelog
 
+## [4.0.0] - 2026-07-06
+
+### BREAKING — Skill rimosse (consolidate in `agentify`)
+
+- **`agentic-ops-daemon` rimossa.** I suoi pattern vivono in `agentify` come archetipo di ruolo **`high-level-ops`**: livelli di autonomia L0-L5, ops runbook (`RUNBOOK/STATE/TASK_QUEUE/LAST_RUN/OUTBOX/AUDIT`), scheduler wrapper (`ops-run.ps1`/`.sh`), regole per task unattended (idempotenti, loggati, fail-loud).
+- **`claude-session-supervisor` rimossa.** I suoi pattern vivono in `agentify` come **tool-guard** dei ruoli tool-empowered: kill-switch, denylist/allowlist statiche, propose-and-confirm via `OUTBOX.md`, audit trail append-only, lock anti-concorrenza. Il meccanismo specifico "hook `PreToolUse` + secondo `claude -p` judge" NON è migrato: era legato a Claude Code come runtime, mentre in `agentify` il giudizio contestuale spetta al modello del ruolo (scelto nell'intervista) col Critic come second opinion, e il guard fa enforcement deterministico dei confini.
+- **Migrazione per chi usava le skill rimosse**: invocare `/vibecoding:agentify`; il caso "daemon/scheduler su CLI esistente" è coperto dal ruolo `high-level-ops`, il caso "sessione autonoma con boundaries" dal ruolo `coding-agent`/`high-level-ops` con tool-guard. Il caso residuo "supervisionare letteralmente una sessione `claude -p` con AI judge" non è più coperto dal toolkit (recuperabile dalla storia git, tag 3.3.1).
+
+### Added — `agentify`: ruoli tool-empowered con tool layer derivato da opencode
+
+- **Nuova Fase 3.5 — Tool Layer & Autonomy**: si attiva quando il team include ruoli tool-empowered.
+- **Archetipo `coding-agent`**: ruolo del team ReAct con tool reali di coding — `read`, `glob`, `grep`, `edit`, `write`, `apply_patch`, `shell`, `lsp`, `todo`, `webfetch` — con potenza paragonabile a un coding agent dedicato. Tool, prompt di descrizione e system prompt (varianti per famiglia di modello: anthropic/gemini/gpt/default/plan) **derivati da opencode** (https://github.com/anomalyco/opencode, MIT, con attribuzione). opencode è fonte di conoscenza/risorse/tool, NON dipendenza runtime: nulla viene installato o invocato.
+- **Archetipo `high-level-ops`**: operatore disciplinato schedulato (check, refresh, report, proposte) con tool layer ridotto.
+- **Modello permessi per tool** in stile opencode: `allow`/`propose`/`deny` per tool, pattern glob per `shell` (l'`ask` interattivo di opencode diventa `propose` asincrono via OUTBOX nel contesto unattended).
+- **Tool-guard** (`tools/guard.py`): enforcement a 4 livelli in ordine di costo (kill-switch → denylist → allowlist → propose-and-confirm) + audit append-only + lock.
+- **Provenance harvest**: `docs/OPENCODE_HARVEST.md` (nella skill e scaffoldato nel progetto target) registra cosa è stato preso da opencode, da quale commit, con quali adattamenti; è la baseline per il ricontrollo periodico dell'upstream.
+- **Nuovi template**: `agno/role_coding_agent.py`, `agno/role_high_level_ops.py`, `agno/tools/*` (fs, shell, lsp, tasklist, guard, registry), `agno/test_guard.py`, `ops/*` (RUNBOOK, STATE, TASK_QUEUE, LAST_RUN, OUTBOX, AUDIT, ops-run.ps1/.sh), `OPENCODE_HARVEST.md`.
+- **`scripts/discover.py` esteso**: rileva anche OS (per `.ps1` vs `.sh`) e path sensibili (seed della denylist del guard) — funzioni assorbite dal discover dell'ex claude-session-supervisor.
+- **Validazione estesa**: `test_guard.py` (deny/allow/propose/kill-switch/lock, deterministico, no API) e task di editing reale nel bench del coding-agent.
+
+### Changed
+
+- `agentify/SKILL.md`: rimossa l'esclusione "l'agente target deve essere un coding tool → meglio OpenCode/Aider/Continue" — il caso è ora coperto dal ruolo `coding-agent`. Rimossi i cross-reference alle skill pensionate.
+- `plugin.json` / `marketplace.json`: versione 3.3.1 → 4.0.0; count skill 8 → 6; descrizioni e keyword aggiornate (rimossi `ops-daemon`, `supervisor`, `pre-tool-use-hook`; aggiunti `coding-agent`, `tool-guard`, `opencode-harvest`).
+- CI `validate.yml`: rimossi i file required delle skill pensionate; aggiunti i nuovi file required di `agentify`.
+- `README.md`: allineato (6 skill, sezione agentify riscritta).
+
+---
+
 ## [3.3.1] - 2026-07-06
 
 ### Added

@@ -48,9 +48,14 @@ jobs:
             "skills/md-to-pdf/SKILL.md" \
             "skills/md-to-pdf/scripts/convert.py" \
             "skills/md-to-pdf/styles/default.css" \
-            "skills/agentic-ops-daemon/SKILL.md" \
-            "skills/claude-session-supervisor/SKILL.md" \
-            "skills/claude-session-supervisor/scripts/discover.py" \
+            "skills/agentify/OPENCODE_HARVEST.md" \
+            "skills/agentify/scripts/discover.py" \
+            "skills/agentify/templates/agno/tools/guard.py.template" \
+            "skills/agentify/templates/agno/role_coding_agent.py.template" \
+            "skills/agentify/templates/agno/role_high_level_ops.py.template" \
+            "skills/agentify/templates/agno/test_guard.py.template" \
+            "skills/agentify/templates/prompts/coding_agent/default.md.template" \
+            "skills/agentify/templates/ops/RUNBOOK.md.template" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \

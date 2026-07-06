@@ -1,0 +1,33 @@
+# OPENCODE_HARVEST — provenance del tool layer di {{ identity.name }}
+
+Il tool layer di questo agente (`agent/tools/`) deriva da **opencode**
+(https://github.com/anomalyco/opencode, **MIT License**, Copyright (c) 2025
+opencode/Anomaly), via i template della skill `agentify` (vibecoding
+{{ vibecoding_version }}). opencode NON e' una dipendenza runtime: nulla viene
+installato o invocato.
+
+## Baseline
+
+| Campo | Valore |
+|---|---|
+| Commit opencode di riferimento | `{{ opencode_commit }}` |
+| Data scaffolding | {{ scaffold_date }} |
+| Skill di provenienza | agentify {{ vibecoding_version }} |
+
+## Componenti derivati
+
+| File in questo progetto | Derivato da (opencode `packages/opencode/src/`) |
+|---|---|
+| `agent/tools/fs.py` | `tool/{read,glob,grep,edit,write,apply_patch}.{ts,txt}` |
+| `agent/tools/shell.py` | `tool/shell.ts` |
+| `agent/tools/lsp.py` | `tool/lsp.{ts,txt}` |
+| `agent/tools/tasklist.py` | `tool/todo.ts`, `tool/todowrite.txt` |
+| `agent/tools/web.py` | `tool/webfetch.{ts,txt}` |
+| `agent/tools/guard.py` (PERMISSIONS) | modello permessi `opencode.json` (allow/ask/deny) |
+| `agent/prompts/coding_agent.md` | `session/prompt/{{ prompt_variant }}.txt` |
+
+## Aggiornamenti
+
+Per verificare novita' upstream utili, confronta i path sopra col commit di
+riferimento e aggiorna via i template della skill `agentify` (procedura nel
+`OPENCODE_HARVEST.md` della skill). Registra qui ogni refresh.

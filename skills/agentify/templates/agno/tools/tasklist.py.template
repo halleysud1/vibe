@@ -1,0 +1,50 @@
+"""Tool todo del tool layer: task list interna per lavori multi-step.
+
+Descrizione adattata da opencode packages/opencode/src/tool/todowrite.txt
+@ commit eb6ff0c1 (https://github.com/anomalyco/opencode, MIT License).
+Vedi docs/OPENCODE_HARVEST.md.
+"""
+import json
+
+from agent.tools.guard import GUARD
+
+_todos = []
+_VALID = {"pending", "in_progress", "completed", "cancelled"}
+
+
+def todo_write(todos_json: str) -> str:
+    """Create and maintain a structured task list for the current session.
+
+    Use proactively when the task requires 3+ distinct steps, when new
+    instructions arrive, or when breaking down complex work. Skip for single
+    straightforward tasks or purely informational requests.
+
+    Input: JSON array of {"content": str, "status": str} where status is one of
+    pending | in_progress | completed | cancelled. Rules:
+    - keep exactly ONE item in_progress while work remains
+    - mark completed only after the work is actually done (never on intent)
+    - update in real time, don't batch completions
+    - items must be specific and actionable
+    """
+    global _todos
+    GUARD.gate("todo", {"summary": todos_json[:80]})
+    try:
+        items = json.loads(todos_json)
+        assert isinstance(items, list)
+        for it in items:
+            assert it.get("content") and it.get("status") in _VALID
+    except Exception as e:
+        return f"ERROR: JSON non valido ({e}); atteso array di {{content, status}}"
+    in_prog = sum(1 for it in items if it["status"] == "in_progress")
+    if in_prog > 1:
+        return "ERROR: al massimo UN item in_progress alla volta"
+    _todos = items
+    return todo_read()
+
+
+def todo_read() -> str:
+    """Read the current task list with statuses."""
+    if not _todos:
+        return "(todo list vuota)"
+    mark = {"pending": "[ ]", "in_progress": "[>]", "completed": "[x]", "cancelled": "[-]"}
+    return "\n".join(f"{mark[t['status']]} {t['content']}" for t in _todos)

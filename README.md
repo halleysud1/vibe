@@ -1,4 +1,4 @@
-# Vibecoding 3.2 - SDD toolkit per Claude Code
+# Vibecoding 4.0 - SDD toolkit per Claude Code
 
 Plugin che porta il **vibecoding spec-driven development** in qualunque progetto
 Claude Code. È un repo di **skill** + un comando di bootstrap, non un sistema
@@ -10,20 +10,22 @@ di Claude Code.
 
 ---
 
-## Cosa offre v3.3
+## Cosa offre v4.0
 
 | Componente | Descrizione |
 |---|---|
 | **Skill `methodology`** | Filosofia 3 livelli (business / ecosistema / tecnico), regola anti-overfit, gestione contesto |
 | **Skill `validation-strategies`** | Strategie di validazione per tipo app (web, API, bot, CLI, pipeline, IoT) |
 | **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows |
-| **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone |
+| **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone. Include ruoli tool-empowered: **coding-agent** (tool reali edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode)) e **high-level-ops** (run schedulate), governati da tool-guard con autonomy gates L0-L5, audit trail e propose-and-confirm |
 | **Skill `skill-bootstrap`** | Intervista metodologica: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL |
 | **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (pure-python o Chromium hi-fi), con sintesi AI opzionale |
-| **Skill `agentic-ops-daemon`** | Progetta daemon/scheduler operativi che risvegliano una CLI o un coding agent, eseguono check/refresh/report e lasciano audit trail |
-| **Skill `claude-session-supervisor`** | Fa girare una sessione `claude -p` non interattiva (worker) governata da un secondo `claude -p` (AI judge) via hook `PreToolUse`: gating multi-livello, audit trail, kill-switch |
 | **Comando `/vibecoding:init`** | Entry point per bootstrappare un nuovo progetto: chiama `skill-bootstrap` |
 | **Templates** | Scaffold pronti per "modulo software" e "cartella di lavorazione Claude" |
+
+> **Breaking 4.0**: le ex skill `agentic-ops-daemon` e `claude-session-supervisor`
+> sono state consolidate in `agentify` (rispettivamente come ruolo `high-level-ops`
+> e come tool-guard). Vedi `CHANGELOG.md` per il percorso di migrazione.
 
 ---
 
@@ -112,18 +114,17 @@ vibe/
 │   ├── change-request/SKILL.md
 │   ├── agentify/
 │   │   ├── SKILL.md
-│   │   ├── scripts/
+│   │   ├── OPENCODE_HARVEST.md     # provenance del tool layer (commit opencode pinnato)
+│   │   ├── scripts/                # discover.py (Fase 0: skill, MCP, OS, path sensibili)
 │   │   └── templates/
+│   │       ├── agno/               # main, ruoli (incl. coding_agent, high_level_ops), tools/
+│   │       ├── prompts/            # varianti system prompt coding-agent (harvest opencode)
+│   │       └── ops/                # RUNBOOK, TASK_QUEUE, OUTBOX, AUDIT, ops-run.ps1/.sh
 │   ├── skill-bootstrap/SKILL.md
-│   ├── md-to-pdf/
-│   │   ├── SKILL.md
-│   │   ├── scripts/
-│   │   └── styles/
-│   ├── agentic-ops-daemon/SKILL.md
-│   └── claude-session-supervisor/
+│   └── md-to-pdf/
 │       ├── SKILL.md
-│       ├── scripts/                # discover.py (Fase 0)
-│       └── templates/              # supervisor.py, wake_worker.ps1/.sh, settings, ops files
+│       ├── scripts/
+│       └── styles/
 ├── templates/
 │   ├── modulo/                      # scaffold "modulo software"
 │   ├── cartella/                    # scaffold "cartella di lavorazione"
@@ -149,11 +150,12 @@ vibe/
 
 **Aggiunto**:
 - Skill `change-request` (protocollo 5 fasi)
-- Skill `agentify` (engine-agnostic, default Agno+AgentOS)
+- Skill `agentify` (engine-agnostic, default Agno+AgentOS; dalla 4.0 con ruoli
+  tool-empowered `coding-agent` e `high-level-ops`, tool layer derivato da opencode,
+  tool-guard con autonomy gates — assorbe le ex skill `agentic-ops-daemon` e
+  `claude-session-supervisor`, rimosse in 4.0.0)
 - Skill `skill-bootstrap` (intervista routing 3-vie)
 - Skill `md-to-pdf` (Markdown → PDF, pure-python o Chromium hi-fi, sintesi AI opzionale)
-- Skill `agentic-ops-daemon` (daemon/scheduler operativi con CLI, runbook, audit trail e autonomy gates)
-- Skill `claude-session-supervisor` (sessione `claude -p` non interattiva con AI judge via hook `PreToolUse`)
 - Templates "modulo" / "cartella di lavorazione"
 
 **Migrato**:

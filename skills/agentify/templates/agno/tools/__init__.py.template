@@ -1,0 +1,42 @@
+"""Registry del tool layer: costruisce il toolset per ruolo dai permessi.
+
+Tool layer derivato da opencode (https://github.com/anomalyco/opencode,
+MIT License, commit eb6ff0c1) — vedi docs/OPENCODE_HARVEST.md.
+
+I set riflettono la Fase 3.5 della skill agentify:
+- coding-agent: layer completo
+- high-level-ops: layer ridotto (niente edit/apply_patch/lsp; write limitato
+  dalla permission a pattern del guard)
+"""
+from agent.tools.fs import (
+    apply_patch, edit_file, glob_files, grep_search, read_file, write_file,
+)
+from agent.tools.guard import GUARD, GuardDenied, GuardProposed
+from agent.tools.lsp import lsp_definition, lsp_document_symbols, lsp_references
+from agent.tools.shell import run_shell
+from agent.tools.tasklist import todo_read, todo_write
+from agent.tools.web import web_fetch
+
+CODING_AGENT_TOOLS = [
+    read_file, glob_files, grep_search,
+    edit_file, write_file, apply_patch,
+    run_shell,
+    lsp_definition, lsp_references, lsp_document_symbols,
+    todo_write, todo_read,
+    web_fetch,
+]
+
+HIGH_LEVEL_OPS_TOOLS = [
+    read_file, glob_files, grep_search,
+    write_file,          # limitato dai pattern del guard (es. solo docs/ops/**)
+    run_shell,           # limitato ai comandi CLI del progetto via pattern
+    todo_write, todo_read,
+]
+
+__all__ = [
+    "GUARD", "GuardDenied", "GuardProposed",
+    "CODING_AGENT_TOOLS", "HIGH_LEVEL_OPS_TOOLS",
+    "read_file", "glob_files", "grep_search", "edit_file", "write_file",
+    "apply_patch", "run_shell", "lsp_definition", "lsp_references",
+    "lsp_document_symbols", "todo_write", "todo_read", "web_fetch",
+]

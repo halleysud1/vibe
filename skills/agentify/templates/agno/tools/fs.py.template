@@ -1,0 +1,221 @@
+"""Tool filesystem del tool layer: read, glob, grep, edit, write, apply_patch.
+
+Implementazioni e descrizioni (docstring) adattate dai tool di opencode
+(packages/opencode/src/tool/{read,glob,grep,edit,apply_patch,write}.{ts,txt}
+@ commit eb6ff0c1, https://github.com/anomalyco/opencode, MIT License).
+Vedi docs/OPENCODE_HARVEST.md.
+
+Ogni funzione e' pensata per essere registrata come tool Agno (plain function).
+Le mutazioni passano dal tool-guard (GUARD.gate) prima di toccare il disco.
+"""
+import re
+import subprocess
+from pathlib import Path
+
+from agent.tools.guard import GUARD, PROJECT_ROOT
+
+MAX_LINES = 2000
+MAX_LINE_LEN = 2000
+_read_files = set()
+
+
+def _resolve(file_path):
+    p = Path(file_path)
+    return p if p.is_absolute() else (PROJECT_ROOT / p)
+
+
+def read_file(file_path: str, offset: int = 1, limit: int = MAX_LINES) -> str:
+    """Read a file or directory from the local filesystem.
+
+    - file_path should be absolute (relative paths resolve against project root).
+    - Returns up to `limit` lines starting at line `offset` (1-indexed); call
+      again with a larger offset to read later sections.
+    - Lines are prefixed `<line>: <content>`; lines longer than 2000 chars are
+      truncated. For directories, entries are listed one per line ('/' suffix
+      for subdirectories).
+    - Use grep_search to find content in large files; use glob_files if unsure
+      of the path. Avoid tiny repeated slices: read a larger window.
+    """
+    GUARD.gate("read", {"file_path": file_path})
+    p = _resolve(file_path)
+    if p.is_dir():
+        entries = sorted(p.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
+        return "\n".join(e.name + ("/" if e.is_dir() else "") for e in entries) or "(vuota)"
+    if not p.is_file():
+        return f"ERROR: file non trovato: {file_path}"
+    lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+    _read_files.add(str(p.resolve()))
+    chunk = lines[offset - 1 : offset - 1 + limit]
+    out = [
+        f"{i}: {l[:MAX_LINE_LEN]}{'... (troncata)' if len(l) > MAX_LINE_LEN else ''}"
+        for i, l in enumerate(chunk, start=offset)
+    ]
+    if offset - 1 + limit < len(lines):
+        out.append(f"... ({len(lines) - (offset - 1 + limit)} righe rimanenti, rileggi con offset={offset + limit})")
+    return "\n".join(out) or "(file vuoto)"
+
+
+def glob_files(pattern: str, path: str = ".") -> str:
+    """Fast file pattern matching that works with any codebase size.
+
+    - Supports glob patterns like "**/*.py" or "src/**/*.ts".
+    - Returns matching file paths (relative to project root), sorted.
+    - Use when you need to find files by name pattern; batch multiple
+      speculative searches in parallel when useful.
+    """
+    GUARD.gate("glob", {"pattern": pattern, "path": path})
+    base = _resolve(path)
+    matches = sorted(str(m.relative_to(PROJECT_ROOT)) for m in base.glob(pattern) if m.is_file())
+    if len(matches) > 500:
+        return "\n".join(matches[:500]) + f"\n... (+{len(matches) - 500} altri)"
+    return "\n".join(matches) or "(nessun match)"
+
+
+def grep_search(pattern: str, path: str = ".", include: str = "") -> str:
+    """Fast content search using regular expressions.
+
+    - Full regex syntax (e.g. "log.*Error", r"function\\s+\\w+").
+    - Filter files with `include` (e.g. "*.py", "*.{ts,tsx}").
+    - Returns file paths and line numbers with matching lines.
+    - Prefers ripgrep (rg) when available; falls back to pure Python.
+    """
+    GUARD.gate("grep", {"pattern": pattern, "path": path, "include": include})
+    base = _resolve(path)
+    try:
+        cmd = ["rg", "-n", "--no-heading", "-m", "200", pattern, str(base)]
+        if include:
+            cmd[1:1] = ["--glob", include]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=60,
+                           encoding="utf-8", errors="replace")
+        if r.returncode in (0, 1):
+            return r.stdout[:30000] or "(nessun match)"
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    rx = re.compile(pattern)
+    out, count = [], 0
+    globs = include.strip("{}").split(",") if include else ["*"]
+    for g in globs:
+        for f in base.rglob(g.strip() or "*"):
+            if not f.is_file() or ".git" in f.parts:
+                continue
+            try:
+                for i, line in enumerate(f.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                    if rx.search(line):
+                        out.append(f"{f.relative_to(PROJECT_ROOT)}:{i}:{line[:300]}")
+                        count += 1
+                        if count >= 200:
+                            return "\n".join(out) + "\n... (limite 200 match)"
+            except Exception:
+                continue
+    return "\n".join(out) or "(nessun match)"
+
+
+def edit_file(file_path: str, old_string: str, new_string: str, replace_all: bool = False) -> str:
+    """Performs exact string replacements in files.
+
+    - You must read the file (read_file) before editing it; the edit FAILS
+      otherwise. Preserve exact indentation as it appears AFTER the `N: `
+      line-number prefix — never include the prefix itself in old_string.
+    - FAILS if old_string is not found, or found multiple times (provide more
+      surrounding context to disambiguate, or set replace_all=True).
+    - ALWAYS prefer editing existing files over creating new ones.
+    """
+    GUARD.gate("edit", {"file_path": file_path, "summary": old_string[:80]})
+    p = _resolve(file_path)
+    if str(p.resolve()) not in _read_files:
+        return "ERROR: leggi il file con read_file prima di modificarlo"
+    content = p.read_text(encoding="utf-8")
+    n = content.count(old_string)
+    if n == 0:
+        return "ERROR: oldString not found in content"
+    if n > 1 and not replace_all:
+        return (f"ERROR: found {n} matches for oldString. Provide more surrounding "
+                "lines to identify the correct match, or use replace_all")
+    p.write_text(content.replace(old_string, new_string, -1 if replace_all else 1),
+                 encoding="utf-8")
+    return f"OK: {file_path} modificato ({n if replace_all else 1} sostituzioni)"
+
+
+def write_file(file_path: str, content: str) -> str:
+    """Write a file to the local filesystem, overwriting if it exists.
+
+    - Use only for genuinely NEW files; prefer edit_file for existing ones.
+    - Parent directories are created as needed.
+    """
+    GUARD.gate("write", {"file_path": file_path, "summary": content[:80]})
+    p = _resolve(file_path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    _read_files.add(str(p.resolve()))
+    return f"OK: scritto {file_path} ({len(content)} caratteri)"
+
+
+def apply_patch(patch: str) -> str:
+    """Edit files with a stripped-down, file-oriented diff format.
+
+    Envelope: `*** Begin Patch` ... `*** End Patch`. Each file section starts
+    with one of: `*** Add File: <path>` (following lines prefixed '+'),
+    `*** Delete File: <path>`, `*** Update File: <path>` (optionally followed
+    by `*** Move to: <new path>`, then hunks of context/'-'/'+' lines,
+    optionally introduced by `@@ <anchor>`).
+    """
+    lines = patch.splitlines()
+    if not lines or lines[0].strip() != "*** Begin Patch" or lines[-1].strip() != "*** End Patch":
+        return "ERROR: patch senza envelope *** Begin Patch / *** End Patch"
+    results, i = [], 1
+    while i < len(lines) - 1:
+        line = lines[i].strip()
+        if line.startswith("*** Add File: "):
+            path = line[len("*** Add File: "):].strip()
+            body, i = _collect(lines, i + 1)
+            content = "\n".join(l[1:] for l in body if l.startswith("+"))
+            results.append(write_file(path, content + "\n"))
+        elif line.startswith("*** Delete File: "):
+            path = line[len("*** Delete File: "):].strip()
+            GUARD.gate("apply_patch", {"file_path": path, "summary": "delete"})
+            _resolve(path).unlink()
+            results.append(f"OK: cancellato {path}")
+            i += 1
+        elif line.startswith("*** Update File: "):
+            path = line[len("*** Update File: "):].strip()
+            move_to = None
+            if i + 1 < len(lines) and lines[i + 1].strip().startswith("*** Move to: "):
+                move_to = lines[i + 1].strip()[len("*** Move to: "):].strip()
+                i += 1
+            body, i = _collect(lines, i + 1)
+            results.append(_apply_update(path, move_to, body))
+        else:
+            i += 1
+    return "\n".join(results) or "ERROR: nessuna operazione nella patch"
+
+
+def _collect(lines, start):
+    body = []
+    i = start
+    while i < len(lines) and not lines[i].strip().startswith("*** "):
+        body.append(lines[i])
+        i += 1
+    return body, i
+
+
+def _apply_update(path, move_to, body):
+    GUARD.gate("apply_patch", {"file_path": path, "summary": f"update ({len(body)} righe hunk)"})
+    p = _resolve(path)
+    if not p.is_file():
+        return f"ERROR: file da aggiornare non trovato: {path}"
+    content = p.read_text(encoding="utf-8")
+    old = "\n".join(l[1:] if l[:1] in ("-", " ") else None or l[1:]
+                    for l in body if l[:1] in ("-", " "))
+    new = "\n".join(l[1:] for l in body if l[:1] in ("+", " "))
+    if old and old in content:
+        content = content.replace(old, new, 1)
+    elif not old:
+        return f"ERROR: hunk senza righe di contesto/rimozione per {path}"
+    else:
+        return f"ERROR: contesto hunk non trovato in {path}"
+    target = _resolve(move_to) if move_to else p
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    if move_to and target != p:
+        p.unlink()
+    return f"OK: aggiornato {move_to or path}"

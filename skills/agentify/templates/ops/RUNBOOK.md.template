@@ -1,0 +1,93 @@
+# RUNBOOK — Operativita' schedulata di {{ identity.name }}
+
+Protocollo operativo per le run non presidiate dell'agente (ruoli
+tool-empowered di agentify: high-level-ops e/o coding-agent schedulato).
+
+## Stato
+
+{{ stato }} (es. "PoC", "Produzione", "Calibrazione")
+
+## Invocazione
+
+### Windows (Task Scheduler)
+
+```powershell
+.\scripts\ops-run.ps1 -Profile {{ default_profile }}
+```
+
+### Unix / macOS (cron / systemd)
+
+```bash
+./scripts/ops-run.sh --profile {{ default_profile }}
+```
+
+Working directory attesa: root del progetto. Lo script attiva il venv se
+presente, forza UTF-8, invoca il workflow del profilo e propaga l'exit code.
+
+## Profili
+
+| Profilo | Frequenza | Task ammessi | Livello autonomia max |
+|---|---|---|---|
+{{ profili_tabella }}
+
+## Cosa l'agente PUO' fare (allowlist / permessi)
+
+(Renderizzato dai permessi del manifesto — vedi `agent/tools/guard.py`.)
+
+{{ allowlist_descrizione }}
+
+## Cosa l'agente NON PUO' fare
+
+### Denylist baseline (sempre attiva)
+
+- Lettura/scrittura path sensibili (`.env*`, chiavi, credenziali)
+- Comandi shell distruttivi: `rm`, `del`, `git push`, `git reset --hard`, `curl`, `wget`, `scp`
+- Qualunque azione L5 (pagamenti, delete dati, email verso esterni)
+
+### Denylist di dominio (PROJECT_DENYLIST)
+
+{{ project_denylist_descrizione }}
+
+Le azioni con permesso `propose` non vengono eseguite: finiscono in
+`docs/ops/OUTBOX.md` come proposta da confermare (propose-and-confirm).
+
+## File ops
+
+| File | Tipo | Contenuto |
+|---|---|---|
+| `docs/ops/TASK_QUEUE.md` | input | Mission del profilo (cosa deve fare) |
+| `docs/ops/STATE.md` | output | Stato corrente osservabile |
+| `docs/ops/LAST_RUN.md` | output | Esito ultima run (overwrite ogni volta) |
+| `docs/ops/OUTBOX.md` | output | Proposte pending (propose-and-confirm) |
+| `docs/ops/AUDIT.md` | output | Log append-only delle decisioni del tool-guard |
+| `docs/ops/.run.lock` | runtime | Lock anti-concorrenza (auto-recovery su PID stale) |
+
+Non sono database: sono journal umani.
+
+## Pattern di gating (tool-guard)
+
+Ogni tool call dei ruoli tool-empowered passa da `agent/tools/guard.py`:
+
+1. **Kill-switch** — oltre {{ kill_switch_limit }} tool call/run → DENY hard
+2. **Denylist baseline + PROJECT_DENYLIST** → DENY hard
+3. **Permessi per tool** (allow/propose/deny, pattern per shell e path)
+4. **propose** → accodato in OUTBOX, non eseguito
+
+## Lettura output
+
+Dopo una run: `LAST_RUN.md` per l'esito sintetico; `AUDIT.md` per la sequenza
+di decisioni (`[timestamp] tool=X decision=ALLOW|DENY|PROPOSE rule=... motivo=...`);
+`OUTBOX.md` per le proposte da approvare.
+
+## Recovery
+
+- **Crash della run**: il lock con PID stale viene rilevato e ripulito al run successivo
+- **Kill-switch attivato**: `AUDIT.md` registra `rule=kill_switch`; capisci perche'
+  il ruolo e' andato in loop, correggi mission o permessi
+- **Proposte accumulate in OUTBOX**: rivedile e marca APPROVED/REJECTED; una
+  proposta APPROVED si applica manualmente o al run successivo
+
+## Riferimenti
+
+- Skill upstream: `agentify` (vibecoding 4.0.0+), Fase 3.5 — Tool Layer & Autonomy
+- Provenance tool layer: `docs/OPENCODE_HARVEST.md`

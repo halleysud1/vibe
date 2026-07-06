@@ -7,6 +7,11 @@ Esegue dalla CWD del progetto target. Inventaria:
 - scripts Python
 - deps Python
 - domain hints (da CLAUDE.md)
+- OS (decide .ps1 vs .sh per gli script scheduler)
+- path sensibili (seed della denylist del tool-guard, Fase 3.5)
+
+Le ultime due funzioni sono assorbite dal discover.py dell'ex skill
+claude-session-supervisor (rimossa in vibecoding 4.0.0).
 
 Output: JSON stampato a stdout (anche salvato in ./.agentify_discovery.json se --save).
 
@@ -18,6 +23,7 @@ Usage:
 from __future__ import annotations
 import argparse
 import json
+import platform
 import re
 import sys
 from pathlib import Path
@@ -145,6 +151,33 @@ def extract_domain_hints(root: Path) -> dict:
     }
 
 
+def detect_os() -> dict:
+    sys_name = platform.system().lower()
+    return {
+        "platform": sys_name,
+        "scheduler_wrapper": "ops-run.ps1" if "windows" in sys_name else "ops-run.sh",
+        "wrapper_both": True,  # scaffolda sempre entrambi per portabilità
+    }
+
+
+def find_sensitive_paths(root: Path) -> list[str]:
+    """Path da mettere in denylist del tool-guard (o comunque da valutare)."""
+    sensitive: list[str] = []
+    for env_file in root.glob(".env*"):
+        if env_file.is_file():
+            sensitive.append(str(env_file.relative_to(root)))
+    for d in ("secrets", "credentials", "keys", ".credentials"):
+        p = root / d
+        if p.is_dir():
+            sensitive.append(str(p.relative_to(root)) + "/")
+    for ext in ("pem", "key", "p12"):
+        for f in root.rglob(f"*.{ext}"):
+            if ".git" in f.parts or "node_modules" in f.parts:
+                continue
+            sensitive.append(str(f.relative_to(root)))
+    return sensitive[:30]  # cap per evitare report enormi
+
+
 def discover(root: Path) -> dict:
     return {
         "project_root": str(root.resolve()),
@@ -154,6 +187,8 @@ def discover(root: Path) -> dict:
         "existing_scripts": find_scripts(root),
         "python_deps": find_python_deps(root),
         "domain_hints": extract_domain_hints(root),
+        "os": detect_os(),
+        "sensitive_paths": find_sensitive_paths(root),
     }
 
 

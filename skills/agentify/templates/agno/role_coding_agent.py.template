@@ -1,0 +1,50 @@
+"""Coding-agent role: {{ role_cfg.description }}
+
+Ruolo tool-empowered (agentify Fase 3.5): ciclo ReAct con tool reali di coding
+derivati da opencode. Il system prompt e' la variante per famiglia di modello
+(prompts/coding_agent/{{ prompt_variant }}.md, harvest opencode) fusa con
+identita' e boundaries del manifesto.
+"""
+from pathlib import Path
+
+from agno.agent import Agent
+from agent._models import resolve_model
+from agent.tools import CODING_AGENT_TOOLS
+
+# Renderizzato dallo scaffolding: contenuto di prompts/coding_agent/<variante>.md
+# con {{ identity.name }}, {{ identity.description }}, {{ boundaries }} sostituiti.
+# Varianti disponibili: anthropic | gemini | gpt | default (+ plan come reminder
+# aggiuntivo quando il ruolo opera in modalita' read-only).
+CODING_AGENT_PROMPT = (
+    Path(__file__).resolve().parent.parent / "prompts" / "coding_agent.md"
+).read_text(encoding="utf-8")
+
+CODING_AGENT_INSTRUCTIONS = """
+## Ruolo: Coding Agent
+
+### Compito
+# TODO durante scaffolding: descrivere il perimetro di codice su cui il ruolo
+# opera (moduli, path), il tipo di intervento atteso (bugfix, refactor,
+# manutenzione, feature), il criterio di completamento (test verdi, lint pulito).
+
+### Vincoli
+- Le azioni edit/write/apply_patch/shell passano dal tool-guard: una DENY va
+  rispettata (approccio alternativo), una PROPOSE va lasciata in OUTBOX e
+  segnalata nel report finale.
+- Mai commit/push se non esplicitamente richiesto dalla mission.
+{{ vincoli_specifici_ruolo }}
+"""
+
+
+def build_coding_agent(cfg: dict, base_instructions: str, common_tools: list) -> Agent:
+    return Agent(
+        name="CodingAgent",
+        role=cfg["description"],
+        model=resolve_model(cfg["default"]),
+        instructions=(
+            CODING_AGENT_PROMPT
+            + "\n\n" + base_instructions
+            + "\n\n" + CODING_AGENT_INSTRUCTIONS
+        ),
+        tools=CODING_AGENT_TOOLS + list(common_tools or []),
+    )

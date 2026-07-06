@@ -1,0 +1,246 @@
+"""Tool-guard: enforcement deterministico dei confini per i ruoli tool-empowered.
+
+Derivato dal supervisor.py dell'ex skill claude-session-supervisor (vibecoding
+3.3.1), riespresso come layer in-process: nessun hook esterno, nessun secondo
+LLM. Il giudizio contestuale spetta al modello del ruolo; il guard fa
+enforcement meccanico, in ordine di costo:
+
+1. Kill-switch (counter tool call per run > KILL_SWITCH_LIMIT -> DENY hard)
+2. Denylist baseline (path sensibili, comandi distruttivi) + PROJECT_DENYLIST
+3. Permessi per tool (allow / propose / deny, pattern per shell e path)
+4. propose -> la richiesta viene accodata in OUTBOX.md, NON eseguita
+
+================================================================================
+COME CUSTOMIZZARE PER IL TUO PROGETTO:
+1. KILL_SWITCH_LIMIT: adatta alla tool call density attesa della mission
+2. PERMISSIONS: renderizzato dal manifesto agent.yaml (tools.permissions)
+3. PROJECT_DENYLIST: aggiungi callable domain-specific
+4. SENSITIVE_PATHS: seed da discover.py (.agentify_discovery.json)
+================================================================================
+"""
+import fnmatch
+import json
+import os
+import re
+import threading
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OPS_DIR = PROJECT_ROOT / "docs" / "ops"
+AUDIT_FILE = OPS_DIR / "AUDIT.md"
+OUTBOX_FILE = OPS_DIR / "OUTBOX.md"
+LOCK_FILE = OPS_DIR / ".run.lock"
+
+KILL_SWITCH_LIMIT = {{ kill_switch_limit | default(200) }}
+
+# Permessi per tool: "allow" | "propose" | "deny", oppure dict pattern -> azione.
+# Per shell i pattern matchano il comando (fnmatch); per write/edit i path relativi.
+# Renderizzato da agent.yaml -> tools.permissions.
+PERMISSIONS = {
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "lsp": "allow",
+    "todo": "allow",
+    "edit": {{ permissions.edit | default('"propose"') }},
+    "write": {{ permissions.write | default('{"docs/ops/**": "allow", "*": "propose"}') }},
+    "apply_patch": {{ permissions.apply_patch | default('"propose"') }},
+    "shell": {{ permissions.shell | default('{"git status": "allow", "git diff*": "allow", "pytest*": "allow", "git push*": "deny", "rm *": "deny", "*": "propose"}') }},
+    "webfetch": {{ permissions.webfetch | default('"deny"') }},
+}
+
+# Path che il guard nega sempre in scrittura E lettura (seed da discovery).
+SENSITIVE_PATHS = [
+    ".env", ".env.*", "**/.env", "**/.env.*",
+    "**/*.pem", "**/*.key", "**/id_rsa*",
+    {{ sensitive_paths_extra | default("") }}
+]
+
+# Comandi shell negati sempre, qualunque sia il permesso pattern.
+DESTRUCTIVE_SHELL_RE = re.compile(
+    r"(?<![\w-])(rm|Remove-Item|del|rmdir|mkfs|dd)(?!\w)"
+    r"|git\s+(push|reset\s+--hard|checkout\s+--|clean\s+-[a-z]*f)"
+    r"|(curl|wget|Invoke-WebRequest|scp)\s",
+    re.IGNORECASE,
+)
+
+# Denylist domain-specific: callable (tool_name, detail: dict) -> str | None.
+PROJECT_DENYLIST = [
+    # lambda t, d: "non toccare policy.py" if t in ("edit", "write")
+    #     and "policy.py" in d.get("file_path", "") else None,
+]
+
+
+class GuardDenied(Exception):
+    """Il tool call e' vietato. Il motivo va restituito al modello."""
+
+
+class GuardProposed(Exception):
+    """Il tool call e' stato accodato in OUTBOX come proposta, non eseguito."""
+
+
+def _now():
+    return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+
+
+def _rel(path_str):
+    if not path_str:
+        return ""
+    try:
+        return str(Path(path_str).resolve().relative_to(PROJECT_ROOT)).replace("\\", "/")
+    except Exception:
+        return str(path_str).replace("\\", "/")
+
+
+def _is_sensitive(path_str):
+    rel = _rel(path_str)
+    name = rel.rsplit("/", 1)[-1]
+    for pat in SENSITIVE_PATHS:
+        if fnmatch.fnmatch(rel, pat) or fnmatch.fnmatch(name, pat):
+            return True
+    return False
+
+
+def _match_pattern_perm(perm, subject):
+    """perm dict {pattern: azione}: primo match non-'*', poi fallback '*'."""
+    if isinstance(perm, str):
+        return perm
+    fallback = "propose"
+    for pattern, action in perm.items():
+        if pattern == "*":
+            fallback = action
+            continue
+        if fnmatch.fnmatch(subject, pattern) or subject.startswith(pattern.rstrip("*")):
+            return action
+    return fallback
+
+
+class Guard:
+    def __init__(self):
+        self._counter = 0
+        self._lock = threading.Lock()
+
+    # --- lock anti-concorrenza (run schedulate) ---
+
+    def acquire_run_lock(self):
+        OPS_DIR.mkdir(parents=True, exist_ok=True)
+        if LOCK_FILE.exists():
+            try:
+                stale_pid = int(LOCK_FILE.read_text(encoding="utf-8").strip())
+            except Exception:
+                stale_pid = None
+            if stale_pid and _pid_alive(stale_pid):
+                raise GuardDenied(f"run gia' in corso (lock pid={stale_pid})")
+        LOCK_FILE.write_text(str(os.getpid()), encoding="utf-8")
+
+    def release_run_lock(self):
+        try:
+            LOCK_FILE.unlink()
+        except FileNotFoundError:
+            pass
+
+    # --- gate: da chiamare PRIMA di ogni azione dei tool ---
+
+    def gate(self, tool_name, detail):
+        """Valuta un tool call. Ritorna None se consentito;
+        solleva GuardDenied o GuardProposed altrimenti.
+        detail: dict con chiavi rilevanti (file_path, command, url, summary).
+        """
+        with self._lock:
+            self._counter += 1
+            n = self._counter
+        detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:200]
+
+        if n > KILL_SWITCH_LIMIT:
+            reason = f"kill-switch (tool call #{n} > {KILL_SWITCH_LIMIT})"
+            self._audit(tool_name, detail_str, "DENY", "kill_switch", reason)
+            raise GuardDenied(reason)
+
+        reason = self._baseline_deny(tool_name, detail)
+        if reason:
+            self._audit(tool_name, detail_str, "DENY", "denylist_baseline", reason)
+            raise GuardDenied(reason)
+
+        for check in PROJECT_DENYLIST:
+            try:
+                reason = check(tool_name, detail)
+            except Exception:
+                reason = None
+            if reason:
+                self._audit(tool_name, detail_str, "DENY", "denylist_project", reason)
+                raise GuardDenied(reason)
+
+        action = self._permission_for(tool_name, detail)
+        if action == "deny":
+            reason = f"permesso 'deny' per {tool_name} su questo input"
+            self._audit(tool_name, detail_str, "DENY", "permission", reason)
+            raise GuardDenied(reason)
+        if action == "propose":
+            self._propose(tool_name, detail)
+            self._audit(tool_name, detail_str, "PROPOSE", "permission", "accodato in OUTBOX")
+            raise GuardProposed(
+                f"azione '{tool_name}' accodata in {OUTBOX_FILE.name} come proposta "
+                "(propose-and-confirm): non eseguita. Prosegui col resto del task."
+            )
+        self._audit(tool_name, detail_str, "ALLOW", "permission", "ok")
+        return None
+
+    # --- internals ---
+
+    def _baseline_deny(self, tool_name, detail):
+        path = detail.get("file_path", "")
+        if path and _is_sensitive(path):
+            return f"path sensibile vietato: {_rel(path)}"
+        if tool_name == "shell":
+            cmd = str(detail.get("command", ""))
+            bad = DESTRUCTIVE_SHELL_RE.search(cmd)
+            if bad:
+                return f"comando shell distruttivo: {bad.group(0)!r}"
+        return None
+
+    def _permission_for(self, tool_name, detail):
+        perm = PERMISSIONS.get(tool_name, "propose")
+        if tool_name == "shell":
+            return _match_pattern_perm(perm, str(detail.get("command", "")))
+        if tool_name in ("write", "edit", "apply_patch"):
+            return _match_pattern_perm(perm, _rel(detail.get("file_path", "")))
+        return perm if isinstance(perm, str) else "propose"
+
+    def _propose(self, tool_name, detail):
+        OPS_DIR.mkdir(parents=True, exist_ok=True)
+        entry = (
+            f"\n## {_now()} — proposta: {tool_name}\n\n"
+            f"- azione: `{tool_name}`\n"
+            f"- payload: `{json.dumps(detail, ensure_ascii=False, default=str)[:800]}`\n"
+            f"- motivazione: {detail.get('reason', '(non dichiarata dal ruolo)')}\n"
+            f"- stato: PENDING\n"
+        )
+        with OUTBOX_FILE.open("a", encoding="utf-8") as f:
+            f.write(entry)
+
+    def _audit(self, tool_name, detail_str, decision, rule, reason):
+        OPS_DIR.mkdir(parents=True, exist_ok=True)
+        safe_detail = detail_str.replace("\n", " ").replace('"', "'")
+        safe_reason = str(reason).replace("\n", " ").replace('"', "'")[:300]
+        line = (
+            f'[{_now()}] tool={tool_name} input="{safe_detail}" '
+            f'decision={decision} rule={rule} motivo="{safe_reason}"\n'
+        )
+        try:
+            with AUDIT_FILE.open("a", encoding="utf-8") as f:
+                f.write(line)
+        except Exception:
+            pass
+
+
+def _pid_alive(pid):
+    try:
+        os.kill(pid, 0)
+    except OSError:
+        return False
+    return True
+
+
+# Istanza condivisa dai tool del layer (una per processo/run).
+GUARD = Guard()

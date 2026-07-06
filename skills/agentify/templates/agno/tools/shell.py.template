@@ -1,0 +1,43 @@
+"""Tool shell del tool layer: esecuzione comandi con timeout e output cap.
+
+Adattato dal tool shell di opencode (packages/opencode/src/tool/shell.ts
+@ commit eb6ff0c1, https://github.com/anomalyco/opencode, MIT License).
+Vedi docs/OPENCODE_HARVEST.md.
+
+I permessi a pattern (es. "pytest*": allow, "git push*": deny) sono applicati
+dal tool-guard PRIMA dell'esecuzione.
+"""
+import subprocess
+
+from agent.tools.guard import GUARD, PROJECT_ROOT
+
+DEFAULT_TIMEOUT = 120
+MAX_OUTPUT = 30000
+
+
+def run_shell(command: str, timeout: int = DEFAULT_TIMEOUT, reason: str = "") -> str:
+    """Execute a shell command in the project root and return its output.
+
+    - Use for real system commands (builds, tests, git status/diff), NOT for
+      file operations: use read_file/edit_file/write_file/glob_files/grep_search
+      instead — never cat/sed/echo-redirection.
+    - Never use shell to communicate with the user.
+    - `reason` (1 line) documents why the command is needed: it appears in the
+      audit trail and in eventual propose-and-confirm entries.
+    - Output (stdout+stderr) is truncated at 30000 characters; timeout default
+      120s (max 600).
+    """
+    GUARD.gate("shell", {"command": command, "reason": reason})
+    timeout = min(int(timeout or DEFAULT_TIMEOUT), 600)
+    try:
+        r = subprocess.run(
+            command, shell=True, capture_output=True, text=True,
+            timeout=timeout, cwd=str(PROJECT_ROOT),
+            encoding="utf-8", errors="replace",
+        )
+    except subprocess.TimeoutExpired:
+        return f"ERROR: timeout ({timeout}s) per: {command}"
+    out = (r.stdout or "") + (("\n[stderr]\n" + r.stderr) if r.stderr else "")
+    if len(out) > MAX_OUTPUT:
+        out = out[:MAX_OUTPUT] + f"\n... (output troncato a {MAX_OUTPUT} caratteri)"
+    return f"[exit={r.returncode}]\n{out.strip() or '(nessun output)'}"

@@ -1,0 +1,38 @@
+# ops-run.ps1 — wrapper Windows Task Scheduler per le run schedulate dell'agente.
+# Skill di provenienza: agentify (vibecoding 4.0.0+), Fase 4 — Scheduler.
+# Pattern lock/UTF-8/exit-code ereditati dal wake_worker.ps1 dell'ex
+# claude-session-supervisor.
+#
+# Registrazione (esempio, da eseguire manualmente — MAI automatizzata):
+#   schtasks /Create /TN "{{ identity.name }}-{{ default_profile }}" /SC DAILY /ST 02:00 `
+#     /TR "powershell -NoProfile -ExecutionPolicy Bypass -File '<root>\scripts\ops-run.ps1' -Profile {{ default_profile }}"
+param(
+    [string]$Profile = "{{ default_profile }}",
+    [int]$TimeoutSec = {{ run_timeout_sec | default(1800) }}
+)
+
+$ErrorActionPreference = "Stop"
+$ProjectRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+Set-Location $ProjectRoot
+
+# UTF-8 forzato (accenti nei file ops)
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$env:PYTHONIOENCODING = "utf-8"
+
+# venv se presente
+$venv = Join-Path $ProjectRoot ".venv\Scripts\Activate.ps1"
+if (Test-Path $venv) { . $venv }
+
+# Il lock anti-concorrenza e' gestito dal tool-guard (docs/ops/.run.lock):
+# se una run e' gia' in corso il workflow esce subito con errore esplicito.
+Write-Host "[ops-run] profilo=$Profile root=$ProjectRoot"
+$proc = Start-Process -FilePath "python" `
+    -ArgumentList @("-m", "agent.workflows.{{ scheduled_workflow_module }}", "--profile", $Profile) `
+    -NoNewWindow -PassThru -Wait:$false
+if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+    $proc.Kill()
+    Write-Error "[ops-run] timeout hard ($TimeoutSec s): processo terminato"
+    exit 124
+}
+Write-Host "[ops-run] exit=$($proc.ExitCode)"
+exit $proc.ExitCode

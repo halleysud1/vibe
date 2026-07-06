@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# ops-run.sh — wrapper cron/systemd per le run schedulate dell'agente.
+# Skill di provenienza: agentify (vibecoding 4.0.0+), Fase 4 — Scheduler.
+# Pattern lock/timeout/exit-code ereditati dal wake_worker.sh dell'ex
+# claude-session-supervisor.
+#
+# Registrazione cron (esempio, da eseguire manualmente — MAI automatizzata):
+#   0 2 * * * /path/to/project/scripts/ops-run.sh --profile {{ default_profile }}
+set -euo pipefail
+
+PROFILE="{{ default_profile }}"
+TIMEOUT_SEC="{{ run_timeout_sec | default(1800) }}"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --profile) PROFILE="$2"; shift 2 ;;
+    --timeout) TIMEOUT_SEC="$2"; shift 2 ;;
+    *) echo "argomento sconosciuto: $1" >&2; exit 2 ;;
+  esac
+done
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+export PYTHONIOENCODING=utf-8
+
+# venv se presente
+[[ -f .venv/bin/activate ]] && source .venv/bin/activate
+
+# timeout portabile (macOS: gtimeout da coreutils)
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout || true)"
+
+echo "[ops-run] profilo=$PROFILE root=$PROJECT_ROOT"
+# Il lock anti-concorrenza e' gestito dal tool-guard (docs/ops/.run.lock).
+if [[ -n "$TIMEOUT_BIN" ]]; then
+  "$TIMEOUT_BIN" --kill-after=30 "$TIMEOUT_SEC" \
+    python -m agent.workflows.{{ scheduled_workflow_module }} --profile "$PROFILE"
+else
+  python -m agent.workflows.{{ scheduled_workflow_module }} --profile "$PROFILE"
+fi
+rc=$?
+echo "[ops-run] exit=$rc"
+exit $rc

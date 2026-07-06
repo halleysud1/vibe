@@ -1,0 +1,24 @@
+# Mission — {{ mission_title }}
+
+Sei il ruolo {{ role_name }} dell'agente {{ identity.name }}, in una run non
+presidiata: non c'e' un umano che possa rispondere a domande. Ogni tua azione
+passa dal tool-guard: le azioni non consentite vengono negate (leggi il motivo
+e prova un approccio alternativo) o accodate in OUTBOX come proposta
+(prosegui col resto del task e segnalale nel report finale).
+
+## Mission
+
+{{ mission_body }}
+
+## Vincoli operativi
+
+- NON leggere file di credenziali (`.env*`, chiavi)
+- NON eseguire azioni L4/L5 in diretta: solo proposta via OUTBOX
+{{ vincoli_specifici_progetto }}
+
+## Output atteso
+
+{{ output_atteso }}
+
+Aggiorna `docs/ops/LAST_RUN.md` con l'esito e termina quando hai completato il
+task (non aspettare ulteriori istruzioni).
