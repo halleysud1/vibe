@@ -1,0 +1,20 @@
+# OUTBOX — proposte in attesa di approvazione (propose-and-confirm)
+
+I ruoli tool-empowered NON eseguono in diretta le azioni con permesso
+`propose` (modifiche a codice/config fuori allowlist, scritture verso sistemi
+esterni, azioni L4): le **propongono** qui. Un umano le rivede e le applica
+(o le approva per il run successivo).
+
+Formato per ogni proposta (appeso dal tool-guard):
+
+```
+## {{timestamp ISO}} — proposta: {{tool}}
+
+- azione: {{tool e input sintetico}}
+- payload: {{valori proposti}}
+- motivazione: {{perche', in relazione alla mission}}
+- stato: PENDING | APPROVED | REJECTED
+```
+
+<!-- Le proposte vengono appese sotto. Non e' storage transazionale:
+     e' un journal umano di cose da approvare. -->

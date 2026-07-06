@@ -1,0 +1,18 @@
+# STATE — stato corrente osservabile
+
+Fotografia leggibile dello stato del dominio operato dall'agente.
+Aggiornata dai profili ops a fine run. Non e' un database: e' un journal umano.
+
+## Ultimo aggiornamento
+
+_(mai aggiornato)_
+
+## Indicatori
+
+| Indicatore | Valore | Aggiornato |
+|---|---|---|
+{{ indicatori_iniziali }}
+
+## Note
+
+<!-- osservazioni sintetiche sullo stato, appese dai profili ops -->

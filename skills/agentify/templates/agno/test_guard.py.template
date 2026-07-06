@@ -1,0 +1,86 @@
+"""Test deterministici del tool-guard (no API calls, no LLM).
+
+Derivati da test_supervisor.py dell'ex skill claude-session-supervisor.
+Coprono: allow, denylist baseline (path sensibili, comandi distruttivi),
+permessi a pattern, propose->OUTBOX, kill-switch, lock anti-concorrenza.
+"""
+import os
+
+import pytest
+
+import agent.tools.guard as guard_mod
+from agent.tools.guard import Guard, GuardDenied, GuardProposed
+
+
+@pytest.fixture()
+def guard(tmp_path, monkeypatch):
+    ops = tmp_path / "docs" / "ops"
+    ops.mkdir(parents=True)
+    monkeypatch.setattr(guard_mod, "OPS_DIR", ops)
+    monkeypatch.setattr(guard_mod, "AUDIT_FILE", ops / "AUDIT.md")
+    monkeypatch.setattr(guard_mod, "OUTBOX_FILE", ops / "OUTBOX.md")
+    monkeypatch.setattr(guard_mod, "LOCK_FILE", ops / ".run.lock")
+    monkeypatch.setattr(guard_mod, "KILL_SWITCH_LIMIT", 5)
+    return Guard()
+
+
+def test_read_allowed(guard):
+    assert guard.gate("read", {"file_path": "README.md"}) is None
+
+
+def test_sensitive_path_denied(guard):
+    with pytest.raises(GuardDenied, match="sensibile"):
+        guard.gate("read", {"file_path": ".env"})
+    with pytest.raises(GuardDenied):
+        guard.gate("write", {"file_path": "config/.env.prod"})
+
+
+def test_destructive_shell_denied(guard):
+    for cmd in ("rm -rf data", "git push origin main", "curl https://x.example"):
+        with pytest.raises(GuardDenied, match="distruttivo"):
+            guard.gate("shell", {"command": cmd})
+
+
+def test_shell_pattern_allow(guard, monkeypatch):
+    monkeypatch.setitem(guard_mod.PERMISSIONS, "shell", {"git status": "allow", "*": "deny"})
+    assert guard.gate("shell", {"command": "git status"}) is None
+    with pytest.raises(GuardDenied):
+        guard.gate("shell", {"command": "python setup.py"})
+
+
+def test_propose_goes_to_outbox(guard, monkeypatch):
+    monkeypatch.setitem(guard_mod.PERMISSIONS, "edit", "propose")
+    with pytest.raises(GuardProposed):
+        guard.gate("edit", {"file_path": "src/main.py", "summary": "fix"})
+    outbox = guard_mod.OUTBOX_FILE.read_text(encoding="utf-8")
+    assert "proposta: edit" in outbox and "PENDING" in outbox
+
+
+def test_audit_written(guard):
+    guard.gate("read", {"file_path": "README.md"})
+    audit = guard_mod.AUDIT_FILE.read_text(encoding="utf-8")
+    assert "tool=read" in audit and "decision=ALLOW" in audit
+
+
+def test_kill_switch(guard):
+    for _ in range(5):
+        guard.gate("read", {"file_path": "README.md"})
+    with pytest.raises(GuardDenied, match="kill-switch"):
+        guard.gate("read", {"file_path": "README.md"})
+
+
+def test_run_lock(guard):
+    guard.acquire_run_lock()
+    other = Guard()
+    with pytest.raises(GuardDenied, match="lock"):
+        other.acquire_run_lock()
+    guard.release_run_lock()
+    other.acquire_run_lock()
+    other.release_run_lock()
+
+
+def test_stale_lock_recovered(guard):
+    guard_mod.LOCK_FILE.write_text("999999999", encoding="utf-8")
+    guard.acquire_run_lock()  # pid morto -> lock riacquisito
+    assert guard_mod.LOCK_FILE.read_text(encoding="utf-8") == str(os.getpid())
+    guard.release_run_lock()

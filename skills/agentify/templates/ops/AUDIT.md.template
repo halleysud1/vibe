@@ -1,0 +1,12 @@
+# AUDIT — Decisioni tool-guard (append-only)
+
+Log append-only delle decisioni del tool-guard sui tool call dei ruoli
+tool-empowered. Formato:
+`[ISO-8601] tool=<name> input="<troncato>" decision=ALLOW|DENY|PROPOSE rule=<permission|denylist_baseline|denylist_project|kill_switch> motivo="<testo>"`.
+
+Mai loggare: contenuto completo di file letti, output di tool, valori di
+`.env`, dati di dominio sensibili.
+
+---
+
+<!-- Le righe di audit sono appese qui sotto dal tool-guard -->

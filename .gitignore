@@ -29,3 +29,6 @@ venv/
 /PROJECT_SPEC.md
 /.vibecoding
 /.vibecoding-state.md
+
+# PR body drafts (locali, non versionati)
+.pr-body-*.md

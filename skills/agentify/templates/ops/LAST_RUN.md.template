@@ -1,0 +1,5 @@
+# Last Run
+
+_Nessuna run eseguita ancora. Questo file viene sovrascritto a ogni run
+schedulata (`scripts/ops-run.{ps1,sh}`) con: timestamp, profilo, durata,
+esito, tool call totali, errori, proposte accodate in OUTBOX._

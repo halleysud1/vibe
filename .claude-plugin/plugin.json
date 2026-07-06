@@ -1,7 +1,7 @@
 {
   "name": "vibecoding",
-  "version": "3.3.1",
-  "description": "Toolkit di skill per spec-driven development con Claude Code. Filosofia 3-livelli (business/ecosistema/tecnico), routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili per change-request, agentify, agentic ops daemon e claude-session-supervisor (sessioni Claude non interattive con AI judge), bootstrap di nuovi progetti, conversione Markdown -> PDF con sintesi AI opzionale.",
+  "version": "4.0.0",
+  "description": "Toolkit di skill per spec-driven development con Claude Code. Filosofia 3-livelli (business/ecosistema/tecnico), routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili per change-request e agentify (agenti standalone con ruoli tool-empowered: coding-agent con tool layer derivato da opencode, high-level-ops schedulato, tool-guard con autonomy gates L0-L5), bootstrap di nuovi progetti, conversione Markdown -> PDF con sintesi AI opzionale.",
   "author": {
     "name": "Gianluigi — Halley Sud SRL",
     "url": "https://github.com/halleysud1"
@@ -21,12 +21,11 @@
     "anti-overfit",
     "validation",
     "md-to-pdf",
-    "ops-daemon",
-    "agentic-ops",
     "autonomous-agent",
-    "supervisor",
-    "ai-judge",
-    "pre-tool-use-hook",
+    "coding-agent",
+    "tool-guard",
+    "opencode-harvest",
+    "agentic-ops",
     "claude-code"
   ],
   "commands": [
@@ -38,8 +37,6 @@
     "./skills/change-request/",
     "./skills/agentify/",
     "./skills/skill-bootstrap/",
-    "./skills/md-to-pdf/",
-    "./skills/agentic-ops-daemon/",
-    "./skills/claude-session-supervisor/"
+    "./skills/md-to-pdf/"
   ]
 }
