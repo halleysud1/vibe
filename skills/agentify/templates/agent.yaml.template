@@ -58,6 +58,20 @@ mcp_servers:
     transport: {{ cfg.transport | default('stdio') }}
   {% endfor %}
 
+{% if tools_empowered %}tools:
+  # Permessi del tool layer (allow | propose | deny; pattern per shell/path)
+  permissions:
+    {% for tool, perm in tools.permissions.items() %}{{ tool }}: {{ perm }}
+    {% endfor %}
+  # Definition-of-done del progetto: comandi oggettivi, decidono il VERDE di verify()
+  definition_of_done:
+    {% for check in tools.definition_of_done %}- name: {{ check.name }}
+      command: "{{ check.command }}"
+      required: {{ check.required | default(true) }}
+    {% endfor %}
+  max_verify_cycles: {{ tools.max_verify_cycles | default(3) }}
+  kill_switch_limit: {{ tools.kill_switch_limit | default(200) }}
+{% endif %}
 models:
   strategy: {{ models.strategy }}            # team | single
   team_mode: {{ models.team_mode }}          # route | coordinate

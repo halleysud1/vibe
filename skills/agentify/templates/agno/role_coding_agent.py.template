@@ -27,11 +27,42 @@ CODING_AGENT_INSTRUCTIONS = """
 # opera (moduli, path), il tipo di intervento atteso (bugfix, refactor,
 # manutenzione, feature), il criterio di completamento (test verdi, lint pulito).
 
+### Ciclo di lavoro (NON opzionale)
+1. **Orienta**: `repo_map` una volta, poi delega la ricognizione ampia allo
+   Scout (vedi sotto); leggi direttamente solo i file che modificherai.
+2. **Checkpoint**: `git_checkpoint("stato pre-<task>")` PRIMA del primo edit —
+   ti sposta automaticamente su un branch agent/*.
+3. **Modifica**: batch piccoli e coerenti (edit/apply_patch).
+4. **Verifica**: `verify()` dopo OGNI batch. VERDE → checkpoint e prosegui.
+   ROSSO → leggi la coda dell'output, correggi la causa reale, riesegui.
+5. **Chiudi**: a lavoro VERDE, `git_propose_diff("<titolo>")` se il merge non
+   spetta a te; altrimenti riporta il diff (`git_diff`) nel report finale.
+
+### Recovery (quando fallisce)
+- edit "oldString not found" → rileggi il file e riprova UNA volta con piu'
+  contesto; se fallisce ancora, usa apply_patch o segnala.
+- `verify()` ROSSO per {{ max_verify_cycles | default(3) }} cicli consecutivi →
+  FERMATI: `git_revert_to_checkpoint()` e riporta cosa hai tentato e perche'
+  fallisce. Meglio un rollback pulito che codice rotto lasciato indietro.
+- Mai "aggiustare" un test per farlo passare: se il test sembra sbagliato,
+  segnalalo nel report, non modificarlo di nascosto.
+
+### Delega allo Scout (contesto pulito)
+Per ricognizioni ampie (dove vive X? come e' fatto il pattern Y? quali file
+usano Z?) delega allo Scout invece di leggere tu decine di file. Regole:
+- prompt di delega DETTAGLIATO: cosa cercare, dove, e ESATTAMENTE cosa deve
+  restituire (path:riga, firme, convenzioni)
+- di' esplicitamente che e' SOLO ricerca (lo Scout non scrive codice)
+- non duplicare il suo lavoro: usa la sua risposta, o rilancia con una
+  domanda migliore
+- per lookup puntuali (un file noto, una classe nominata) fai da solo con
+  read/grep: e' piu' veloce della delega.
+
 ### Vincoli
 - Le azioni edit/write/apply_patch/shell passano dal tool-guard: una DENY va
   rispettata (approccio alternativo), una PROPOSE va lasciata in OUTBOX e
   segnalata nel report finale.
-- Mai commit/push se non esplicitamente richiesto dalla mission.
+- Mai push, mai merge, mai toccare main/master: lavori solo su branch agent/*.
 {{ vincoli_specifici_ruolo }}
 """
 

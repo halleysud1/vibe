@@ -1,0 +1,108 @@
+"""Eval harness del coding-agent: golden task a esito oggettivo.
+
+A differenza di bench_models (latenza/lunghezza + review umana), qui il
+verdetto e' meccanico: fixture riproducibile -> il candidato esegue il task
+-> i comandi di verify decidono PASS/FAIL. Serve a scegliere il modello del
+coder coi numeri (es. glm-5.2 vs gemini-3.1-pro-preview), non a sensazione.
+
+Uso:
+    python -m agent.tests.eval_coder                       # modello default
+    python -m agent.tests.eval_coder --models glm-5.2,gemini-3.1-pro-preview
+    python -m agent.tests.eval_coder --task bugfix-esempio
+
+Output: tabella PASS/FAIL per modello x task + agent/tests/eval_results.json.
+Costa token reali: parti con 1 modello x 1 task per tarare i budget.
+"""
+import argparse
+import json
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+import yaml
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+GOLDEN = PROJECT_ROOT / "agent" / "tests" / "golden_tasks.yaml"
+RESULTS = PROJECT_ROOT / "agent" / "tests" / "eval_results.json"
+
+DEFAULT_MODELS = ["{{ models.roles.coding_agent.default | default('glm-5.2') }}"]
+
+
+def _run_agent(model_id: str, prompt: str, workdir: Path, timeout: int) -> dict:
+    """Esegue il coding-agent (solo lui, senza team) sul task, nel workdir."""
+    import os
+    env = dict(os.environ, AGENT_PROJECT_ROOT=str(workdir))
+    # Il runner minimale istanzia il solo ruolo coder puntato sul workdir:
+    # cosi' l'eval misura il ruolo, non l'orchestrazione.
+    code = (
+        "import sys; sys.path.insert(0, r'" + str(PROJECT_ROOT) + "');"
+        "from agent.roles.coding_agent import build_coding_agent;"
+        "agent = build_coding_agent({'description': 'eval', 'default': '" + model_id + "'}, '', []);"
+        "r = agent.run(sys.stdin.read()); print(getattr(r, 'content', r))"
+    )
+    t0 = time.time()
+    try:
+        r = subprocess.run(
+            [sys.executable, "-c", code], input=prompt, capture_output=True,
+            text=True, timeout=timeout, cwd=str(workdir), env=env,
+            encoding="utf-8", errors="replace",
+        )
+        return {"elapsed": round(time.time() - t0, 1), "agent_exit": r.returncode,
+                "agent_tail": (r.stdout or r.stderr)[-800:]}
+    except subprocess.TimeoutExpired:
+        return {"elapsed": timeout, "agent_exit": -1, "agent_tail": "TIMEOUT"}
+
+
+def _verify(commands: list, workdir: Path) -> tuple[bool, str]:
+    for cmd in commands:
+        r = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                           timeout=300, cwd=str(workdir),
+                           encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            return False, f"{cmd} -> exit {r.returncode}: " + \
+                          ((r.stdout or "") + (r.stderr or ""))[-500:]
+    return True, "ok"
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
+    ap.add_argument("--task", default="", help="solo il task con questo name")
+    args = ap.parse_args()
+    models = [m.strip() for m in args.models.split(",") if m.strip()]
+    tasks = yaml.safe_load(GOLDEN.read_text(encoding="utf-8"))["tasks"]
+    if args.task:
+        tasks = [t for t in tasks if t["name"] == args.task]
+
+    results = []
+    for model in models:
+        for task in tasks:
+            fixture = PROJECT_ROOT / task["fixture"]
+            with tempfile.TemporaryDirectory(prefix="eval-") as tmp:
+                workdir = Path(tmp) / "repo"
+                shutil.copytree(fixture, workdir)
+                subprocess.run(["git", "init", "-q"], cwd=workdir)
+                subprocess.run(["git", "add", "-A"], cwd=workdir)
+                subprocess.run(["git", "commit", "-qm", "fixture"], cwd=workdir)
+                run = _run_agent(model, task["prompt"], workdir,
+                                 task.get("max_seconds", 300))
+                passed, detail = _verify(task["verify"], workdir)
+                results.append({"model": model, "task": task["name"],
+                                "pass": passed, "detail": detail[:300], **run})
+                mark = "PASS" if passed else "FAIL"
+                print(f"[{mark}] {model:28s} {task['name']:24s} {run['elapsed']}s")
+
+    RESULTS.write_text(json.dumps(results, indent=2, ensure_ascii=False),
+                       encoding="utf-8")
+    print(f"\nScoreboard:")
+    for model in models:
+        got = [r for r in results if r["model"] == model]
+        print(f"  {model}: {sum(r['pass'] for r in got)}/{len(got)} PASS")
+    print(f"Dettagli: {RESULTS}")
+
+
+if __name__ == "__main__":
+    main()

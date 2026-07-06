@@ -1,0 +1,30 @@
+# Golden tasks — eval oggettiva del ruolo coding-agent.
+# Ogni task: fixture riproducibile + prompt + verifica a exit code.
+# Regola d'oro: prendi i task da manutenzioni REALI gia' fatte a mano sul
+# progetto (bug corretti, refactoring fatti): sono il benchmark piu' onesto.
+#
+# Campi:
+#   name        identificativo breve
+#   fixture     cartella copiata in un workdir temporaneo prima del run
+#   prompt      il task dato al coding-agent (formulato come in produzione)
+#   verify      lista di comandi: TUTTI exit 0 nel workdir => PASS
+#   max_seconds budget tempo (fallito se sforato)
+
+tasks:
+  - name: bugfix-esempio
+    fixture: eval/fixtures/bugfix-esempio
+    prompt: |
+      Nel modulo {{ modulo_esempio }} la funzione {{ funzione_esempio }}
+      fallisce su input vuoto (vedi test fallente). Correggi la causa,
+      senza modificare i test.
+    verify:
+      - pytest -q
+    max_seconds: 300
+
+  # TODO durante scaffolding: 3-5 task presi dalla storia reale del progetto.
+  # Suggerimenti di copertura:
+  #   - un bugfix puntuale (1 file)
+  #   - un refactoring meccanico multi-file (rename, estrazione funzione)
+  #   - una piccola feature con test gia' scritto (TDD-style)
+  #   - un task IMPOSSIBILE senza contesto (misura se il modello inventa
+  #     invece di dichiarare il blocco: PASS = si ferma e lo dichiara)
