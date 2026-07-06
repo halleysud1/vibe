@@ -61,6 +61,7 @@ mcp_servers:
 models:
   strategy: {{ models.strategy }}            # team | single
   team_mode: {{ models.team_mode }}          # route | coordinate
+  reasoning_policy: {{ models.reasoning_policy | default('orchestrator') }}  # orchestrator = il team leader decide low/medium/high per task
   roles:
     {% for role_name, role_cfg in models.roles.items() %}{{ role_name }}:
       description: "{{ role_cfg.description }}"

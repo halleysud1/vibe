@@ -1,0 +1,30 @@
+@echo off
+REM startagent.bat — avvia AgentOS ({{ identity.name }}) in background su Windows.
+REM Skill di provenienza: agentify (vibecoding 4.0.x).
+REM Doppio click o da terminale. Complementare: stopagent.bat.
+setlocal
+cd /d "%~dp0.."
+
+if exist ".agent.pid" (
+    echo [startagent] .agent.pid presente: agente forse gia' in esecuzione.
+    echo [startagent] Se sei sicuro che non giri, cancella .agent.pid e riprova. Altrimenti usa stopagent.bat.
+    exit /b 1
+)
+
+if not exist "logs" mkdir logs
+set PYTHONIOENCODING=utf-8
+if exist ".venv\Scripts\activate.bat" call ".venv\Scripts\activate.bat"
+
+echo [startagent] avvio agent.main in background...
+REM PowerShell per avvio detached + cattura PID (wmic e' deprecato su Win11)
+for /f %%p in ('powershell -NoProfile -Command "$p = Start-Process -FilePath 'python' -ArgumentList '-m','agent.main' -WorkingDirectory (Get-Location) -RedirectStandardOutput 'logs\agentos.log' -RedirectStandardError 'logs\agentos.err.log' -WindowStyle Hidden -PassThru; $p.Id"') do set AGENTPID=%%p
+
+if not defined AGENTPID (
+    echo [startagent] ERRORE: avvio fallito, vedi logs\agentos.err.log
+    exit /b 1
+)
+echo %AGENTPID%> .agent.pid
+echo [startagent] avviato PID %AGENTPID%
+echo [startagent] UI:  http://localhost:7777
+echo [startagent] log: logs\agentos.log
+endlocal

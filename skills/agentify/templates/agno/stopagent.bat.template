@@ -1,0 +1,21 @@
+@echo off
+REM stopagent.bat — ferma AgentOS ({{ identity.name }}) avviato da startagent.bat.
+REM Skill di provenienza: agentify (vibecoding 4.0.x).
+setlocal
+cd /d "%~dp0.."
+
+if not exist ".agent.pid" (
+    echo [stopagent] nessun .agent.pid: agente non avviato da startagent.bat ^(o gia' fermato^).
+    exit /b 1
+)
+
+set /p AGENTPID=<.agent.pid
+echo [stopagent] arresto PID %AGENTPID% ^(e processi figli^)...
+taskkill /PID %AGENTPID% /T /F >nul 2>&1
+if errorlevel 1 (
+    echo [stopagent] processo %AGENTPID% non trovato ^(gia' terminato?^): ripulisco il pid file.
+) else (
+    echo [stopagent] fermato.
+)
+del .agent.pid
+endlocal

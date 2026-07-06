@@ -19,6 +19,9 @@
 - **Nuovi template**: `agno/role_coding_agent.py`, `agno/role_high_level_ops.py`, `agno/tools/*` (fs, shell, lsp, tasklist, guard, registry), `agno/test_guard.py`, `ops/*` (RUNBOOK, STATE, TASK_QUEUE, LAST_RUN, OUTBOX, AUDIT, ops-run.ps1/.sh), `OPENCODE_HARVEST.md`.
 - **`scripts/discover.py` esteso**: rileva anche OS (per `.ps1` vs `.sh`) e path sensibili (seed della denylist del guard) — funzioni assorbite dal discover dell'ex claude-session-supervisor.
 - **Validazione estesa**: `test_guard.py` (deny/allow/propose/kill-switch/lock, deterministico, no API) e task di editing reale nel bench del coding-agent.
+- **`startagent.bat` / `stopagent.bat`**: lifecycle dell'agente su Windows — avvio AgentOS in background (PID file, log su `logs/agentos.log`, avvio via PowerShell `Start-Process`, niente `wmic` deprecato) e arresto pulito con `taskkill /T`.
+- **Baseline modelli 4.0.x** (default+candidates da validare col bench): Orchestrator/Analyzer `gemini-3.1-pro-preview` (candidate `glm-5.2`), Writer `gemini-3.5-flash`, Critic `deepseek-v4-pro`, coding-agent `glm-5.2`. Nuovo mapping `glm-*` nel model factory (Zhipu/Z.ai via endpoint OpenAI-compatible, `ZHIPU_API_KEY`). Nota: `deepseek-chat`/`deepseek-reasoner` sono deprecati upstream dal 2026-07-24 → si passa a `deepseek-v4-pro`.
+- **Reasoning policy `orchestrator`**: il livello di ragionamento (`low`/`medium`/`high`) non è fissato per ruolo — lo decide l'Orchestrator task per task alla delega; `resolve_model(id, reasoning=...)` lo traduce nel parametro del provider (thinking budget Gemini/Claude, `reasoning_effort` GPT, thinking on/off DeepSeek/GLM) con fallback pulito.
 
 ### Changed
 
