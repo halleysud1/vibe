@@ -1,0 +1,95 @@
+# RUNBOOK - Sessione Claude autonoma con supervisor
+
+Protocollo operativo del pattern worker + supervisor (skill `claude-session-supervisor`).
+
+## Stato
+
+{{ stato }} (es. "PoC", "Produzione", "Calibrazione")
+
+## Invocazione
+
+### Windows (PowerShell)
+
+```powershell
+.\scripts\ops\wake_worker.ps1
+# oppure con mission alternativa:
+.\scripts\ops\wake_worker.ps1 -TaskFile docs\ops\TASK_QUEUE_alt.md
+```
+
+### Unix / macOS (bash)
+
+```bash
+./scripts/ops/wake_worker.sh
+# oppure:
+./scripts/ops/wake_worker.sh --task-file docs/ops/TASK_QUEUE_alt.md
+```
+
+Working directory atteso: root del progetto. Il worker eredita `CLAUDE.md` e le skill ma viene ristretto via `scripts/ops/worker-settings.json`.
+
+## Cosa il worker PUO' fare
+
+(Customizza in base alla mission e alle allowlist del progetto.)
+
+- Leggere file in `data/` e `docs/ops/`
+- Scrivere in `docs/ops/LAST_RUN.md`
+- Eseguire comandi Bash di sola lettura: `ls`, `pwd`, `cat`, `file`, `wc`
+- Usare `Grep` e `Glob` su path sotto `data/` o `docs/ops/`
+
+## Cosa il worker NON PUO' fare
+
+### Denylist baseline (sempre attiva)
+
+- Tool MCP non in `PROJECT_MCP_ALLOWLIST` (vedi `supervisor.py`)
+- Lettura/scrittura `.env*`
+- Comandi distruttivi: `rm`, `Remove-Item`, `del`, `curl`, `wget`, `Invoke-WebRequest`, `scp`, `mv`, `git push`, `git reset --hard`, `git checkout --`
+- Scrittura/modifica fuori da `docs/ops/`
+- `WebFetch`, `WebSearch`
+
+### Denylist di dominio (PROJECT_DENYLIST)
+
+{{ project_denylist_descrizione }}
+
+Tutto il resto passa per il **judge LLM**, che approva o nega caso per caso rispetto alla mission dichiarata.
+
+## File ops
+
+| File | Tipo | Contenuto |
+|---|---|---|
+| `docs/ops/TASK_QUEUE.md` | input | Mission del worker (cosa deve fare) |
+| `docs/ops/LAST_RUN.md` | output | Esito ultima run (overwrite ogni volta) |
+| `docs/ops/AUDIT.md` | output | Log append-only delle decisioni del supervisor |
+| `docs/ops/.worker.lock` | runtime | Lock anti-concorrenza (auto-cleanup) |
+| `docs/ops/.run_counter.tmp` | runtime | Contatore tool call per kill-switch (auto-cleanup) |
+
+## Pattern di gating (supervisor)
+
+Ogni tool call del worker passa per `scripts/ops/supervisor.py` (hook `PreToolUse`):
+
+1. **Counter check** - se tool call della run corrente > 200 -> DENY hard (kill-switch)
+2. **Denylist baseline** - mcp__*, .env, comandi distruttivi, write fuori docs/ops/ -> DENY hard
+3. **Denylist progetto** (`PROJECT_DENYLIST`) -> DENY hard
+4. **Allowlist statica** - match path/pattern noti -> APPROVE senza chiamare LLM
+5. **Judge LLM** - tutto il resto: `claude -p` con mission + tool call -> APPROVE/DENY
+
+Output del supervisor:
+- exit 0 = il worker procede col tool call
+- exit 2 = il worker viene bloccato, motivazione ri-iniettata come messaggio nella sessione
+
+## Lettura output
+
+Dopo una run:
+
+- `docs/ops/LAST_RUN.md` ha l'esito sintetico (timestamp, durata, tool call totali, errori)
+- `docs/ops/AUDIT.md` ha la sequenza di decisioni del judge in formato: `[timestamp] tool=X input="..." decision=APPROVE|DENY rule=... motivo="..."`
+
+## Recovery
+
+- **Crash del worker**: lock file persiste con PID stale -> il prossimo run lo rileva e ripulisce
+- **Crash del supervisor**: l'eccezione non gestita ritorna exit 2 (fail-safe). Vedi `AUDIT.md` per la riga `rule=supervisor_error`
+- **Kill-switch attivato**: AUDIT.md registra `rule=kill_switch`; ispeziona, capisci perche' il worker e' andato in loop, correggi la mission o l'allowlist
+
+## Riferimenti
+
+- Spec del pattern: `docs/specs/{{ spec_id }}-claude-autonomous-session.md` (se presente)
+- Skill upstream: `claude-session-supervisor` (vibecoding 3.3.0+)
+- Skill complementare per scheduling: `agentic-ops-daemon`

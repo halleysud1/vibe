@@ -1,5 +1,21 @@
 # Changelog
 
+## [3.3.1] - 2026-07-06
+
+### Added
+- **Skill `claude-session-supervisor`** — pattern worker + supervisor con AI judge purpose-aware via hook `PreToolUse` di Claude Code: una sessione `claude -p` non interattiva (worker) governata da una seconda sessione `claude -p` (judge) che valuta ogni tool call rispetto alla mission. Gating multi-livello (counter kill-switch → denylist baseline + `PROJECT_DENYLIST` → allowlist statica → AI judge LLM), audit trail append-only, lock anti-concorrenza, UTF-8 forzato. Include `scripts/discover.py` (Fase 0) e template portabili (`supervisor.py`, `worker/judge-settings.json`, `wake_worker.ps1`/`.sh`, `test_supervisor.py`, `RUNBOOK/TASK_QUEUE/AUDIT/LAST_RUN/OUTBOX.md`).
+- **`OUTBOX.md.template`** nella skill — supporta il pattern propose-and-confirm per le scritture MCP (referenziato da `supervisor.py` ma non presente nella 3.3.0 upstream).
+- **Cross-reference reciproco** tra `claude-session-supervisor` e `agentic-ops-daemon` (skill sorelle: la prima supervisiona una sessione Claude Code, la seconda schedula una CLI; vocabolario ops condiviso).
+
+### Changed
+- `plugin.json` / `marketplace.json`: versione 3.2.0 → 3.3.1; aggiunta `./skills/claude-session-supervisor/` (count skill 7 → 8); nuovi keyword (`autonomous-agent`, `supervisor`, `ai-judge`, `pre-tool-use-hook`).
+- CI `validate.yml`: aggiunti `skills/claude-session-supervisor/SKILL.md` e `scripts/discover.py` alla lista dei file richiesti.
+
+### Note
+- **Riconciliazione della 3.3.0**: la skill era stata pubblicata sul branch `feature/claude-session-supervisor` come 3.3.0, ma partendo da una base che precedeva `agentic-ops-daemon` (gap documentato nella 3.3.0 stessa). La 3.3.1 la reintegra sul `main` corrente, così le due skill coesistono affiancate come da design SPEC-010. La 3.3.0 non è mai stata rilasciata su `main`.
+
+---
+
 ## [3.2.0] - 2026-05-16
 
 ### Added

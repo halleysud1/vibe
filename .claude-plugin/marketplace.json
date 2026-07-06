@@ -6,15 +6,15 @@
     "url": "https://github.com/halleysud1"
   },
   "metadata": {
-    "description": "Vibecoding 3.2 - Toolkit di skill per spec-driven development con Claude Code: filosofia 3-livelli, routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili change-request, agentify e agentic ops daemon",
-    "version": "3.2.0"
+    "description": "Vibecoding 3.3 - Toolkit di skill per spec-driven development con Claude Code: filosofia 3-livelli, routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili change-request, agentify, agentic ops daemon e claude-session-supervisor",
+    "version": "3.3.1"
   },
   "plugins": [
     {
       "name": "vibecoding",
       "source": "./",
-      "description": "Toolkit di skill per spec-driven development. Include 7 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap, md-to-pdf, agentic-ops-daemon), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude.",
-      "version": "3.2.0",
+      "description": "Toolkit di skill per spec-driven development. Include 8 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap, md-to-pdf, agentic-ops-daemon, claude-session-supervisor), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude.",
+      "version": "3.3.1",
       "author": {
         "name": "Gianluigi — Halley Sud SRL"
       },
@@ -29,6 +29,10 @@
         "md-to-pdf",
         "ops-daemon",
         "agentic-ops",
+        "autonomous-agent",
+        "supervisor",
+        "ai-judge",
+        "pre-tool-use-hook",
         "claude-code"
       ],
       "category": "development-workflow"

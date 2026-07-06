@@ -49,6 +49,8 @@ jobs:
             "skills/md-to-pdf/scripts/convert.py" \
             "skills/md-to-pdf/styles/default.css" \
             "skills/agentic-ops-daemon/SKILL.md" \
+            "skills/claude-session-supervisor/SKILL.md" \
+            "skills/claude-session-supervisor/scripts/discover.py" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \

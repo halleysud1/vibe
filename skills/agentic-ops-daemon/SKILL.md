@@ -188,6 +188,13 @@ Output:
 
 Se l'agente deve modificare codice, apri una change request separata.
 
+Se il coding agent risvegliato e' **Claude Code** e serve supervisionare i
+singoli tool call (mission oltre il puro read-only), non reinventare il gating
+qui: usa la skill sorella **`claude-session-supervisor`**, che scaffolda il
+pattern worker + AI judge via hook `PreToolUse`. Le due skill condividono il
+vocabolario ops (`RUNBOOK.md`, `TASK_QUEUE.md`, `AUDIT.md`): questa schedula,
+quella supervisiona.
+
 ---
 
 ## Fase 5 - Segreti e provider AI

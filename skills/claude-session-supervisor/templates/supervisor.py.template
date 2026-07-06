@@ -1,0 +1,294 @@
+"""Supervisor / AI judge per worker Claude autonomo.
+
+Pattern: hook PreToolUse di Claude Code intercetta ogni tool call del worker.
+Layer di gating in ordine (costo crescente):
+1. Counter kill-switch (>KILL_SWITCH_LIMIT tool call/run -> DENY hard)
+2. Denylist baseline + PROJECT_DENYLIST
+3. Allowlist statica
+4. AI judge: claude -p con judge-settings.json (NO hook -> niente ricorsione)
+
+Skill di provenienza: claude-session-supervisor (vibecoding 3.3.0+).
+
+================================================================================
+COME CUSTOMIZZARE PER IL TUO PROGETTO:
+
+1. PROJECT_ROOT / OPS_DIR: adatta se layout diverso da scripts/ops + docs/ops
+2. KILL_SWITCH_LIMIT: alza/abbassa la soglia se la mission ha tool call density diversa
+3. PROJECT_MCP_ALLOWLIST: aggiungi nomi dei tool MCP autorizzati (default: tutti vietati)
+4. PROJECT_DENYLIST: aggiungi callable di domain-specific deny (es. proibisci script che toccano sistemi critici)
+5. ALLOWLIST: aggiungi/rimuovi regole statiche per i path/tool che il tuo worker usa
+================================================================================
+"""
+import json
+import re
+import subprocess
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+# === Configurazione (CUSTOMIZE) ===
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+OPS_DIR = PROJECT_ROOT / "docs" / "ops"
+AUDIT_FILE = OPS_DIR / "AUDIT.md"
+COUNTER_FILE = OPS_DIR / ".run_counter.tmp"
+TASK_QUEUE = OPS_DIR / "TASK_QUEUE.md"
+JUDGE_SETTINGS = PROJECT_ROOT / "scripts" / "ops" / "judge-settings.json"
+
+# Safety net: oltre questo numero di tool call/run, DENY hard tutti i successivi.
+# Default alto: non e' logica di business, e' rete di sicurezza contro bug runaway.
+KILL_SWITCH_LIMIT = 200
+
+# Timeout invocazione judge LLM (secondi)
+JUDGE_TIMEOUT_SEC = 90
+
+# === Boundaries di dominio (CUSTOMIZE) ===
+
+# MCP nella skill matura: tutti i tool MCP sono negati di default.
+# Per abilitare tool MCP specifici, aggiungi il nome ESATTO qui.
+# Le SCRITTURE MCP (create/write/unlink) andrebbero in propose-and-confirm,
+# non in allowlist diretta — usa il template OUTBOX.md per le proposte.
+PROJECT_MCP_ALLOWLIST: list = [
+    # "mcp__nomeserver_safe_search",
+]
+
+# Denylist domain-specific. Ogni voce e' una callable (tool_name, tool_input) -> str|None.
+# Restituisce stringa con motivo se deve essere bloccato, None altrimenti.
+PROJECT_DENYLIST: list = [
+    # Esempio:
+    # lambda t, i: "non eseguire script estrai_*.py" \
+    #     if t == "Bash" and re.search(r"estrai_[\w_]+\.py", i.get("command", "")) else None,
+]
+
+# === Helpers (modificare solo se necessario) ===
+
+def _norm_rel(path_str):
+    if not path_str:
+        return ""
+    p = str(path_str).replace("\\", "/")
+    try:
+        abs_p = Path(p).resolve()
+        rel = abs_p.relative_to(PROJECT_ROOT)
+        return str(rel).replace("\\", "/")
+    except Exception:
+        return p
+
+
+def _path_under(path_str, allowed_prefixes):
+    rel = _norm_rel(path_str)
+    if not rel:
+        return False
+    for prefix in allowed_prefixes:
+        pref = prefix.rstrip("/")
+        if rel == pref or rel.startswith(pref + "/"):
+            return True
+    return False
+
+
+def _is_safe_readonly_bash(cmd):
+    if not cmd:
+        return False
+    # No pipe, redirect, backtick, var expansion
+    if re.search(r"[|&;><`$]", cmd):
+        return False
+    return bool(re.match(r"^\s*(ls|pwd|cd(\s|$)|file\s|stat\s|wc\s|cat\s)", cmd))
+
+
+# === Allowlist statica (CUSTOMIZE) ===
+
+# Voci: (tool_name, predicate(tool_input) -> bool). Se predicate True -> APPROVE.
+ALLOWLIST: list = [
+    ("Read",  lambda inp: _path_under(inp.get("file_path", ""), ("data", "docs/ops"))),
+    ("Grep",  lambda inp: _path_under(inp.get("path", "") or "docs/ops", ("data", "docs/ops"))),
+    ("Glob",  lambda inp: _path_under(inp.get("path", "") or "data", ("data", "docs/ops"))),
+    ("Write", lambda inp: _path_under(inp.get("file_path", ""), ("docs/ops",))),
+    ("Bash",  lambda inp: _is_safe_readonly_bash(inp.get("command", ""))),
+]
+
+
+# === Logica di gating (NON modificare salvo bug) ===
+
+def _baseline_deny_check(tool_name, tool_input):
+    """Denylist universale, sempre attiva."""
+    if tool_name.startswith("mcp__"):
+        if tool_name not in PROJECT_MCP_ALLOWLIST:
+            return f"tool MCP {tool_name!r} non in PROJECT_MCP_ALLOWLIST"
+
+    file_path = str(tool_input.get("file_path", ""))
+    if file_path and re.search(r"(^|[/\\])\.env(\.[^/\\]*)?$", file_path):
+        return "lettura/scrittura .env vietata"
+
+    if tool_name == "Bash":
+        cmd = str(tool_input.get("command", ""))
+        bad = re.search(
+            r"(?<![\w-])(rm|Remove-Item|del|curl|wget|Invoke-WebRequest|scp|mv|Move-Item)(?!\w)"
+            r"|git\s+(push|reset\s+--hard|checkout\s+--)",
+            cmd, re.IGNORECASE,
+        )
+        if bad:
+            return f"comando Bash distruttivo: {bad.group(0)!r}"
+
+    if tool_name in ("Edit", "Write"):
+        rel = _norm_rel(tool_input.get("file_path", ""))
+        if rel and not (rel.startswith("docs/ops/") or rel == "docs/ops"):
+            return f"scrittura/modifica fuori da docs/ops/ vietata ({rel})"
+
+    return None
+
+
+def _project_deny_check(tool_name, tool_input):
+    for check in PROJECT_DENYLIST:
+        try:
+            reason = check(tool_name, tool_input)
+        except Exception:
+            reason = None
+        if reason:
+            return reason
+    return None
+
+
+def _increment_counter():
+    n = 0
+    if COUNTER_FILE.exists():
+        try:
+            n = int(COUNTER_FILE.read_text(encoding="utf-8").strip())
+        except Exception:
+            n = 0
+    n += 1
+    COUNTER_FILE.write_text(str(n), encoding="utf-8")
+    return n
+
+
+def _read_mission():
+    try:
+        return TASK_QUEUE.read_text(encoding="utf-8")[:4000]
+    except Exception:
+        return "(mission non leggibile)"
+
+
+def _judge_llm(tool_name, tool_input, mission):
+    """Invoca claude -p come judge. Usa judge-settings.json (NO hook)."""
+    safe_input = json.dumps(tool_input, ensure_ascii=False)[:1500]
+    prompt = (
+        "Sei un supervisor di sicurezza che valuta UN SINGOLO tool call proposto\n"
+        "da un worker Claude autonomo. Decidi se il tool call e' coerente con la mission.\n\n"
+        f"MISSION DEL WORKER:\n{mission}\n\n"
+        f"TOOL CALL PROPOSTO:\n- tool_name: {tool_name}\n- tool_input: {safe_input}\n\n"
+        "Rispondi con UNA SOLA RIGA in formato:\n"
+        "APPROVE: <motivo breve>\n"
+        "oppure\n"
+        "DENY: <motivo breve>\n\n"
+        "Approva solo se chiaramente coerente con la mission. In dubbio: DENY.\n"
+        "NON eseguire alcun tool: rispondi solo APPROVE/DENY + motivo."
+    )
+    try:
+        result = subprocess.run(
+            ["claude", "-p", prompt,
+             "--settings", str(JUDGE_SETTINGS),
+             "--output-format", "text"],
+            capture_output=True, text=True, timeout=JUDGE_TIMEOUT_SEC,
+            cwd=str(PROJECT_ROOT), encoding="utf-8", errors="replace",
+        )
+        out_lines = [l.strip() for l in (result.stdout or "").splitlines() if l.strip()]
+        verdict_line = next(
+            (l for l in out_lines if l.upper().startswith(("APPROVE", "DENY"))), "",
+        )
+        if verdict_line.upper().startswith("APPROVE"):
+            return "APPROVE", verdict_line.split(":", 1)[1].strip() if ":" in verdict_line else "ok"
+        if verdict_line.upper().startswith("DENY"):
+            return "DENY", verdict_line.split(":", 1)[1].strip() if ":" in verdict_line else "no reason"
+        snippet = (out_lines[0] if out_lines else (result.stderr or ""))[:200]
+        return "DENY", f"judge output non parsabile: {snippet!r}"
+    except subprocess.TimeoutExpired:
+        return "DENY", f"judge timeout (>{JUDGE_TIMEOUT_SEC}s)"
+    except FileNotFoundError:
+        return "DENY", "claude CLI non trovata nel PATH"
+    except Exception as e:
+        return "DENY", f"judge errore: {e!r}"
+
+
+def _audit(tool_name, tool_input_str, decision, rule, motivo):
+    ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    safe_input = tool_input_str.replace("\n", " ").replace("\"", "'")[:200]
+    safe_motivo = motivo.replace("\n", " ").replace("\"", "'")[:300]
+    line = (
+        f'[{ts}] tool={tool_name} input="{safe_input}" '
+        f'decision={decision} rule={rule} motivo="{safe_motivo}"\n'
+    )
+    try:
+        with AUDIT_FILE.open("a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+
+
+def main():
+    try:
+        raw = sys.stdin.read()
+        payload = json.loads(raw) if raw.strip() else {}
+    except Exception as e:
+        sys.stderr.write(f"supervisor: stdin parse error: {e}\n")
+        sys.exit(2)
+
+    tool_name = payload.get("tool_name", "") or ""
+    tool_input = payload.get("tool_input", {}) or {}
+    tool_input_str = (
+        json.dumps(tool_input, ensure_ascii=False)
+        if isinstance(tool_input, (dict, list)) else str(tool_input)
+    )
+
+    # 1. Kill-switch
+    n = _increment_counter()
+    if n > KILL_SWITCH_LIMIT:
+        motivo = f"kill-switch (counter={n} > {KILL_SWITCH_LIMIT})"
+        _audit(tool_name, tool_input_str, "DENY", "kill_switch", motivo)
+        sys.stderr.write(f"supervisor BLOCK: {motivo}\n")
+        sys.exit(2)
+
+    # 2. Denylist baseline
+    deny_reason = _baseline_deny_check(tool_name, tool_input)
+    if deny_reason:
+        _audit(tool_name, tool_input_str, "DENY", "denylist_baseline", deny_reason)
+        sys.stderr.write(f"supervisor BLOCK: {deny_reason}\n")
+        sys.exit(2)
+
+    # 2b. Denylist domain
+    deny_reason = _project_deny_check(tool_name, tool_input)
+    if deny_reason:
+        _audit(tool_name, tool_input_str, "DENY", "denylist_project", deny_reason)
+        sys.stderr.write(f"supervisor BLOCK: {deny_reason}\n")
+        sys.exit(2)
+
+    # 3. Allowlist statica
+    for allow_name, predicate in ALLOWLIST:
+        if tool_name == allow_name:
+            try:
+                if predicate(tool_input):
+                    _audit(tool_name, tool_input_str, "APPROVE", "allowlist_static", "match allowlist")
+                    sys.exit(0)
+            except Exception:
+                pass
+
+    # 4. AI judge (caso ambiguo)
+    mission = _read_mission()
+    decision, motivo = _judge_llm(tool_name, tool_input, mission)
+    _audit(tool_name, tool_input_str, decision, "judge_llm", motivo)
+    if decision == "APPROVE":
+        sys.exit(0)
+    sys.stderr.write(f"supervisor BLOCK: {motivo}\n")
+    sys.exit(2)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as e:
+        try:
+            _audit("UNKNOWN", "(exception)", "DENY", "supervisor_error", str(e)[:200])
+        except Exception:
+            pass
+        sys.stderr.write(f"supervisor unhandled error: {e!r}\n")
+        sys.exit(2)
