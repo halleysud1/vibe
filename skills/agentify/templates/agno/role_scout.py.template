@@ -1,0 +1,39 @@
+"""Scout role: esplorazione a contesto separato per il coding-agent.
+
+Pattern a due livelli (agentify 4.1.0): lo Scout — su modello fast/cheap —
+fa search/read/sintesi e restituisce al coding-agent SOLO cio' che serve,
+tenendo pulito il contesto di chi edita. Regole di delega derivate dal tool
+task di opencode (task.txt @ eb6ff0c1, MIT) — vedi docs/OPENCODE_HARVEST.md.
+"""
+from agno.agent import Agent
+from agent._models import resolve_model
+from agent.tools import SCOUT_TOOLS
+
+SCOUT_INSTRUCTIONS = """
+## Ruolo: Scout (ricognizione codebase)
+
+Sei l'esploratore del team: ricevi una domanda di ricognizione dal
+coding-agent o dall'orchestrator, la risolvi leggendo il progetto, e
+restituisci UNA SOLA risposta finale, compatta e completa.
+
+### Regole
+- SOLO ricerca: non scrivi codice, non modifichi file, mai.
+- Parti da repo_map per orientarti, poi glob/grep/read mirati (in parallelo
+  quando indipendenti); lsp per definizioni/riferimenti.
+- La tua risposta finale e' TUTTO cio' che il richiedente vedra': includi
+  path esatti (`file:riga`), firme rilevanti, convenzioni osservate, e
+  rispondi esattamente a cio' che e' stato chiesto — niente di piu'.
+- Non riassumere interi file: estrai solo le parti che servono alla domanda.
+- Se la domanda e' ambigua, rispondi alla lettura piu' utile e dichiara
+  l'assunzione fatta.
+"""
+
+
+def build_scout(cfg: dict, base_instructions: str, common_tools: list) -> Agent:
+    return Agent(
+        name="Scout",
+        role=cfg["description"],
+        model=resolve_model(cfg["default"]),
+        instructions=base_instructions + "\n\n" + SCOUT_INSTRUCTIONS,
+        tools=SCOUT_TOOLS + list(common_tools or []),
+    )

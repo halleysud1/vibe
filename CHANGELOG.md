@@ -1,5 +1,27 @@
 # Changelog
 
+## [4.1.0] - 2026-07-06
+
+### Added — `agentify`: harness del coding-agent (potenza = struttura del loop, non solo tool)
+
+- **Loop di verifica strutturale**: nuovo tool `verify` che esegue la **definition-of-done** del progetto (comandi oggettivi con exit code, dichiarati nel manifesto `tools.definition_of_done`). Le instructions del coder impongono il ciclo *orienta → checkpoint → edita → verifica*: `verify()` dopo ogni batch, VERDE per procedere, ROSSO → correggi la causa reale; oltre `max_verify_cycles` → STOP e rollback.
+- **Checkpoint git** (`gitops`): `git_checkpoint`/`git_diff`/`git_revert_to_checkpoint`/`git_propose_diff` — il coder lavora solo su branch `agent/*` (mai main, mai push, by-construction), checkpoint prima/dopo ogni batch, rollback pulito quando verify resta rosso, e propose-and-confirm col **diff reale** in OUTBOX (chi approva rivede codice, non descrizioni).
+- **Ruolo `scout`**: ricognizione a contesto separato su modello fast/cheap (default `gemini-3.5-flash`), toolset read-only; il contesto del coder resta pulito. Deriva da `tool/task.{ts,txt}` di opencode (harvest esteso, provenance aggiornata): regole di delega — prompt dettagliato, dichiarare esattamente cosa deve tornare, research-only, no duplicazione.
+- **`repo_map`**: mappa compatta file → simboli (regex-based multi-linguaggio, zero dipendenze) per orientarsi senza saturare il contesto (pattern alla Aider).
+- **Eval a esito oggettivo**: `eval_coder.py` + `golden_tasks.yaml` — fixture riproducibile → il candidato esegue il task → i comandi verify decidono PASS/FAIL; scoreboard per modello. I golden task vanno presi da manutenzioni reali del progetto; incluso il pattern "task impossibile-senza-contesto" (PASS = dichiara il blocco invece di inventare). La scelta del modello del coder si fa coi numeri, non a sensazione.
+- **Failure recovery** nelle instructions del coder: retry singolo su edit fallito, stop+rollback dopo N verify rossi, mai "aggiustare" un test per farlo passare.
+- **Decision table "routine nativa Claude Code vs agentify"** in testa alla skill: per automazione interna di chi ha Claude Code il nativo vince; agentify dichiara la sua nicchia (utenti terzi, multi-modello, always-on, manutenzione delimitata).
+- Manifesto: nuova sezione `tools` (permissions, definition_of_done, max_verify_cycles, kill_switch_limit).
+
+### Changed
+
+- `validation-strategies` **alleggerita** (322 → ~130 righe): rimossi gli script-fotocopia Playwright/httpx e la meccanica duplicata dai tool nativi (`/verify`, `/run`, Claude Preview); resta la checklist di scenari per tipo di app (il valore che si dimentica) + rimando a `eval_coder` per i coding-agent. Nuovo anti-pattern A5 (niente boilerplate mantenuto nelle skill).
+- `guard.py`: permessi `repomap`/`verify`/`gitops` (allow, vincolati by-construction).
+- CI `validate.yml`: aggiunti i nuovi template required (verify, gitops, role_scout, eval_coder).
+- `plugin.json` / `marketplace.json`: 4.0.1 → 4.1.0.
+
+---
+
 ## [4.0.1] - 2026-07-06
 
 ### Fixed

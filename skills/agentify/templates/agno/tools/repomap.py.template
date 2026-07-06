@@ -1,0 +1,58 @@
+"""Tool repo_map: mappa compatta dei simboli del progetto.
+
+Pattern alla Aider: prima di modificare codice, il ruolo riceve una vista
+strutturale (file -> simboli) che orienta senza saturare il contesto.
+Estrazione regex-based per zero dipendenze; per profondita' su un singolo
+file usare lsp_document_symbols.
+"""
+import re
+from pathlib import Path
+
+from agent.tools.guard import GUARD, PROJECT_ROOT
+
+_PATTERNS = {
+    ".py":  re.compile(r"^(?:class|def|async def)\s+(\w+)", re.M),
+    ".js":  re.compile(r"^(?:export\s+)?(?:async\s+)?(?:function|class|const|let)\s+(\w+)", re.M),
+    ".ts":  re.compile(r"^(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const)\s+(\w+)", re.M),
+    ".tsx": re.compile(r"^(?:export\s+)?(?:async\s+)?(?:function|class|interface|type|const)\s+(\w+)", re.M),
+    ".go":  re.compile(r"^(?:func|type)\s+(\w+)", re.M),
+    ".java": re.compile(r"^\s*(?:public|private|protected)?\s*(?:static\s+)?(?:class|interface|enum)\s+(\w+)", re.M),
+    ".rs":  re.compile(r"^(?:pub\s+)?(?:fn|struct|enum|trait|impl)\s+(\w+)", re.M),
+}
+_SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", "dist",
+              "build", ".pytest_cache", "audit_log"}
+_MAX_FILES = 300
+_MAX_SYMBOLS_PER_FILE = 25
+
+
+def repo_map(path: str = ".", extensions: str = "") -> str:
+    """Compact structural map of the project: one line per source file with its
+    top-level symbols (classes, functions, types).
+
+    - Call this ONCE at the start of a coding task to orient yourself, then
+      use read_file/lsp only on the files that matter.
+    - extensions: optional comma-separated filter (e.g. ".py,.ts").
+    """
+    GUARD.gate("repomap", {"path": path})
+    base = Path(path)
+    base = base if base.is_absolute() else PROJECT_ROOT / base
+    wanted = {e.strip() for e in extensions.split(",") if e.strip()} or set(_PATTERNS)
+    lines, n = [], 0
+    for f in sorted(base.rglob("*")):
+        if n >= _MAX_FILES:
+            lines.append(f"... (limite {_MAX_FILES} file raggiunto)")
+            break
+        if not f.is_file() or f.suffix not in wanted or f.suffix not in _PATTERNS:
+            continue
+        if _SKIP_DIRS.intersection(f.parts):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        symbols = _PATTERNS[f.suffix].findall(text)[:_MAX_SYMBOLS_PER_FILE]
+        rel = f.relative_to(PROJECT_ROOT).as_posix()
+        loc = text.count("\n") + 1
+        lines.append(f"{rel} ({loc} loc): {', '.join(symbols) or '-'}")
+        n += 1
+    return "\n".join(lines) or "(nessun file sorgente riconosciuto)"

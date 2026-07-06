@@ -1,0 +1,58 @@
+"""Tool verify: esegue la definition-of-done del progetto e riporta l'esito.
+
+E' il cuore del loop di verifica del coding-agent (agentify 4.1.0): dopo ogni
+batch di modifiche il ruolo DEVE chiamare verify() e iterare finche' non e'
+verde (o fermarsi dopo MAX_VERIFY_CYCLES e proporre/riportare il fallimento).
+
+La definition-of-done e' del PROGETTO, non del modello: comandi oggettivi con
+exit code. Renderizzata dal manifesto (tools.definition_of_done).
+"""
+import subprocess
+
+from agent.tools.guard import GUARD, PROJECT_ROOT
+
+# CUSTOMIZE dal manifesto. Ogni check: name, command, required.
+# I check con required=False sono informativi (non bloccano il verde).
+DEFINITION_OF_DONE = {{ definition_of_done | default('[{"name": "tests", "command": "pytest -q", "required": True}, {"name": "lint", "command": "ruff check .", "required": False}]') }}
+
+# Oltre questo numero di cicli edit->verify falliti, il ruolo deve FERMARSI
+# (riportare il fallimento o proporre in OUTBOX), non insistere alla cieca.
+MAX_VERIFY_CYCLES = {{ max_verify_cycles | default(3) }}
+
+_TIMEOUT = {{ verify_timeout_sec | default(600) }}
+_TAIL = 2500  # caratteri di coda dell'output per check fallito
+
+
+def verify(only: str = "") -> str:
+    """Run the project's definition-of-done (tests, lint, build) and report.
+
+    - Call this after EVERY batch of edits, before declaring work done.
+    - only: optional check name to run a single check (e.g. "tests").
+    - Returns "VERDE" if all required checks pass, otherwise "ROSSO" with the
+      tail of each failing check's output — read it and fix the actual cause.
+    """
+    GUARD.gate("verify", {"summary": only or "all"})
+    checks = [c for c in DEFINITION_OF_DONE if not only or c["name"] == only]
+    if not checks:
+        return f"ERROR: nessun check '{only}' nella definition-of-done"
+    lines, all_green = [], True
+    for c in checks:
+        try:
+            r = subprocess.run(
+                c["command"], shell=True, capture_output=True, text=True,
+                timeout=_TIMEOUT, cwd=str(PROJECT_ROOT),
+                encoding="utf-8", errors="replace",
+            )
+            passed = r.returncode == 0
+            out_tail = ((r.stdout or "") + (r.stderr or ""))[-_TAIL:].strip()
+        except subprocess.TimeoutExpired:
+            passed, out_tail = False, f"timeout ({_TIMEOUT}s)"
+        if not passed and c.get("required", True):
+            all_green = False
+        mark = "PASS" if passed else ("FAIL" if c.get("required", True) else "WARN")
+        lines.append(f"[{mark}] {c['name']} — {c['command']}")
+        if not passed:
+            lines.append(out_tail or "(nessun output)")
+    verdict = "VERDE — definition-of-done soddisfatta" if all_green \
+        else "ROSSO — correggi e riesegui verify()"
+    return verdict + "\n" + "\n".join(lines)

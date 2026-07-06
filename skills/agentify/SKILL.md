@@ -1,6 +1,6 @@
 ---
 name: agentify
-description: "Protocollo portabile per trasformare un progetto Claude Code (con skill SKILL.md, MCP server, scripts) in un agente standalone specializzato. 6 fasi — Discovery → Identity Interview → Engine Selection → Roles & Models → Tool Layer & Autonomy → Scaffolding → Validation. Engine-agnostic (Agno+AgentOS default). Include ruoli tool-empowered: coding-agent (tool reali di editing/shell/LSP derivati da opencode) e high-level-ops (check/refresh/report schedulati con autonomy gates L0-L5, runbook, audit trail, propose-and-confirm)."
+description: "Protocollo portabile per trasformare un progetto Claude Code (con skill SKILL.md, MCP server, scripts) in un agente standalone specializzato. 6 fasi — Discovery → Identity Interview → Engine Selection → Roles & Models → Tool Layer & Autonomy → Scaffolding → Validation. Engine-agnostic (Agno+AgentOS default). Include ruoli tool-empowered: coding-agent con harness completo (tool editing/shell/LSP derivati da opencode + loop di verifica su definition-of-done, checkpoint/rollback git, scout a contesto separato, repo map, eval su golden task), high-level-ops schedulato con autonomy gates L0-L5, tool-guard, runbook, audit trail, propose-and-confirm."
 ---
 
 # /agentify — Trasforma un progetto Claude Code in agente standalone
@@ -36,6 +36,24 @@ La skill è **portabile** — funziona su qualsiasi progetto Claude Code in cui 
 - Il progetto ha solo 1-2 skill banali → meglio uno script Python tradizionale
 - L'utente vuole solo "Claude Code in modalità autonoma" → meglio `claude -p ...` da cron
 - L'utente non sa ancora cosa l'agente debba fare → fai prima `/change-request` per chiarire
+
+### Routine nativa Claude Code vs agente standalone (decidere PRIMA di Fase 1)
+
+Claude Code copre nativamente molta automazione (scheduled tasks/routine cloud,
+workflow multi-agente, subagent, hooks). agentify vale dove il nativo non
+arriva — dichiaralo esplicitamente all'utente:
+
+| Requisito | Routine/workflow nativi | agentify |
+|---|:---:|:---:|
+| Automazione interna schedulata (check, report, refresh) per chi HA Claude Code | ✅ più semplice e mantenuto | ⚠️ overkill |
+| Utenti finali TERZI senza Claude Code (chat Telegram, servizio) | ❌ | ✅ |
+| Multi-modello per costo (GLM/Gemini/DeepSeek per ruolo) | ❌ | ✅ |
+| Servizio always-on con memoria longitudinale di dominio | parziale | ✅ |
+| Sviluppo software open-ended | ✅ superiore (harness maturo) | ❌ usa Claude Code |
+| Manutenzione codice delimitata dentro una pipeline autonoma | — | ✅ coding-agent + harness |
+
+Se tutte le esigenze dell'utente cadono nella prima colonna, fermati e
+suggerisci le routine native: è il consiglio onesto.
 
 ---
 
@@ -142,8 +160,9 @@ Due archetipi con accesso al **tool layer** (Fase 3.5). Sono ruoli del team come
 
 | Archetipo | Compito | Tool layer |
 |---|---|---|
-| **coding-agent** | Modifica davvero il codice del progetto: legge, naviga (LSP), edita, applica patch, esegue comandi, itera sui test. Potenza paragonabile a un coding agent dedicato (opencode), ma dentro il team dell'agente. | Completo: `read`, `glob`, `grep`, `edit`, `write`, `apply_patch`, `shell`, `lsp`, `todo`, `webfetch` |
-| **high-level-ops** | Operatore disciplinato schedulato: health check, refresh dati idempotenti, report, memo, proposte. Erede dell'ex skill `agentic-ops-daemon`. | Ridotto: `read`, `glob`, `grep`, `shell` (comandi CLI del progetto), `write` (solo su output dir) |
+| **coding-agent** | Modifica davvero il codice del progetto col **ciclo orienta → checkpoint → edita → verifica**: `repo_map` per orientarsi, delega ricognizione allo Scout, edit a batch, `verify()` dopo ogni batch, checkpoint/rollback git. | Completo + harness: `repo_map`, fs, `shell`, `verify`, `gitops`, `lsp`, `todo`, `webfetch` |
+| **scout** | Ricognizione a contesto separato per il coding-agent: search/read/sintesi su modello fast/cheap, restituisce solo ciò che serve (path:riga, firme, convenzioni). Il contesto del coder resta pulito. Deriva dal tool `task` di opencode. | Read-only: `repo_map`, `read`, `glob`, `grep`, `lsp` |
+| **high-level-ops** | Operatore disciplinato schedulato: health check, refresh dati idempotenti, report, memo, proposte. Erede dell'ex skill `agentic-ops-daemon`. | Ridotto: `read`, `glob`, `grep`, `shell` (comandi CLI del progetto), `write` (solo su output dir), `verify` |
 
 **Il giudizio resta del modello del ruolo, scelto nell'intervista.** Il tool layer fornisce capacità, non decisioni: la valutazione di cosa fare la fa il modello del ruolo (con il Critic come second opinion), non uno strato esterno.
 
@@ -151,7 +170,7 @@ Due archetipi con accesso al **tool layer** (Fase 3.5). Sono ruoli del team come
 - Agente di supporto cliente: orchestrator + searcher + responder + critic
 - Agente di automazione: orchestrator + high-level-ops + critic
 - Agente di ricerca: orchestrator + searcher + summarizer + writer
-- Agente di manutenzione codice: orchestrator + coding-agent + critic
+- Agente di manutenzione codice: orchestrator + scout + coding-agent + critic
 
 Per ogni ruolo, chiedi all'utente:
 - **Descrizione** (1-2 frasi)
@@ -170,8 +189,12 @@ bench** (anti-pattern A4), non verità assolute:
 | Analyzer | `gemini-3.1-pro-preview` | `glm-5.2` |
 | Writer | `gemini-3.5-flash` | — |
 | Critic | `deepseek-v4-pro` | — |
-| coding-agent (il "coder") | `glm-5.2` | — |
+| coding-agent (il "coder") | `glm-5.2` | `gemini-3.1-pro-preview` |
+| scout | `gemini-3.5-flash` | — |
 | high-level-ops | `gemini-3.5-flash` | `glm-5.2` |
+
+Per il coder la scelta tra default e candidate si fa **coi numeri**: golden
+task in `eval_coder` (Fase 5.5), non a sensazione.
 
 Env attese: `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY` (GLM via
 endpoint OpenAI-compatible di Z.ai — vedi `_models.py`).
@@ -209,8 +232,17 @@ Il tool layer è un set di tool Python per il ciclo ReAct, **derivato da opencod
 | `lsp` | `tool/lsp.ts` + `lsp.txt` | Code intelligence: diagnostica, definizioni, riferimenti (se un LSP server è disponibile per il linguaggio del progetto) |
 | `todo` | `tool/todo.ts` + `todowrite.txt` | Task list interna del ruolo per lavori multi-step |
 | `webfetch` | `tool/webfetch.ts` + `.txt` | Fetch documentazione/risorse esterne (se consentito dai boundaries) |
+| ruolo `scout` | `tool/task.ts` + `task.txt` | Delega di ricognizione a contesto separato (re-espressa come ruolo del team Agno) |
 
-**Prompt harvest**: i prompt di sistema del ruolo coding-agent derivano dalle varianti per famiglia di modello di opencode (`session/prompt/anthropic.txt`, `gemini.txt`, `gpt.txt`, `default.txt`, `plan.txt`). Lo scaffolding sceglie la variante coerente col modello selezionato in Fase 3 e la fonde con l'identità del manifesto.
+**Harness del coding-agent (4.1.0)** — tool NON derivati da opencode, nostri per design (sono la struttura del loop, non capacità):
+
+| Tool | Scopo |
+|---|---|
+| `verify` | Esegue la **definition-of-done** del progetto (test, lint, build — comandi con exit code, dichiarati nel manifesto). Il coder DEVE chiamarlo dopo ogni batch di edit e iterare fino a VERDE, o fermarsi dopo `max_verify_cycles` |
+| `gitops` (`git_checkpoint` / `git_diff` / `git_revert_to_checkpoint` / `git_propose_diff`) | Checkpoint prima/dopo ogni batch su branch `agent/*` (mai main, mai push by-construction); rollback pulito quando verify resta rosso; propose-and-confirm col **diff reale** in OUTBOX |
+| `repo_map` | Mappa compatta file → simboli (regex-based, zero dipendenze) per orientarsi senza saturare il contesto |
+
+**Prompt harvest**: i prompt di sistema del ruolo coding-agent derivano dalle varianti per famiglia di modello di opencode (`session/prompt/anthropic.txt`, `gemini.txt`, `gpt.txt`, `default.txt`, `plan.txt`). Lo scaffolding sceglie la variante coerente col modello selezionato in Fase 3 e la fonde con l'identità del manifesto. Le regole di delega coder→scout derivano da `task.txt` (prompt dettagliato, dichiarare esattamente cosa deve tornare, research-only esplicito, niente duplicazione del lavoro delegato).
 
 **Provenance**: ogni harvest è tracciato in `docs/OPENCODE_HARVEST.md` nel progetto target (cosa è stato preso, da quale commit/versione, con quali adattamenti, attribuzione MIT). Periodicamente si ricontrolla la repo upstream per novità: il doc è la baseline del confronto.
 
@@ -303,15 +335,19 @@ agent/
 ├── main.py                       # entry-point Agno (Team + AgentOS)
 ├── roles/
 │   ├── orchestrator.py           # ORCHESTRATOR_INSTRUCTIONS (per team leader)
-│   ├── coding_agent.py           # se ruolo coding-agent: instructions da prompt harvest
+│   ├── coding_agent.py           # se ruolo coding-agent: instructions da prompt harvest + ciclo verify
+│   ├── scout.py                  # se coding-agent: ricognizione a contesto separato
 │   ├── high_level_ops.py         # se ruolo high-level-ops
 │   ├── <specialist1>.py          # build_<specialist1>(cfg, base_instr, tools)
 │   └── ...
 ├── tools/                        # solo se ruoli tool-empowered
-│   ├── __init__.py               # registry: costruisce il toolset per ruolo dai permessi
+│   ├── __init__.py               # registry: toolset per ruolo (CODING_AGENT/SCOUT/HIGH_LEVEL_OPS)
 │   ├── guard.py                  # tool-guard: kill-switch, deny/allow, propose, audit, lock
 │   ├── fs.py                     # read, glob, grep, edit, write, apply_patch
 │   ├── shell.py                  # shell con timeout, output cap, pattern permissions
+│   ├── verify.py                 # definition-of-done runner (loop di verifica)
+│   ├── gitops.py                 # checkpoint/diff/rollback su branch agent/*, propose diff
+│   ├── repomap.py                # mappa file → simboli
 │   ├── lsp.py                    # bridge LSP (diagnostica, definizioni, riferimenti)
 │   └── tasklist.py               # todo interno per lavori multi-step
 ├── workflows/
@@ -320,7 +356,9 @@ agent/
 └── tests/
     ├── test_smoke.py
     ├── test_guard.py             # se tool layer: deny/allow/propose/kill-switch
-    └── bench_models.py
+    ├── bench_models.py
+    ├── eval_coder.py             # se coding-agent: golden task a esito oggettivo
+    └── golden_tasks.yaml         # fixture + prompt + verify per l'eval
 deploy/
 ├── Dockerfile.agent
 ├── docker-compose.yml
@@ -377,6 +415,11 @@ I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja
 | `agno/telegram_polling.py.template` | BASSA — quasi-copia, parametrizza solo team_id e env vars |
 | `agno/telegram_setup.md` | BASSA — copia diretta come guida nel progetto target |
 | `agno/startagent.bat.template` / `stopagent.bat.template` | BASSA — parametrizza solo il nome agente |
+| `agno/role_scout.py.template` | BASSA — quasi-copia; modello dal manifesto |
+| `agno/tools/verify.py.template` | MEDIA — definition-of-done dal manifesto |
+| `agno/tools/gitops.py.template` / `repomap.py.template` | BASSA — quasi-copia |
+| `agno/eval_coder.py.template` | BASSA — quasi-copia |
+| `agno/golden_tasks.yaml.template` | ALTA — task presi da manutenzioni reali del progetto |
 | `ops/RUNBOOK.md.template` | MEDIA — profili e comandi del progetto |
 | `ops/TASK_QUEUE.md.template` | ALTA — mission specifica |
 | `ops/STATE.md.template` / `LAST_RUN.md.template` / `OUTBOX.md.template` / `AUDIT.md.template` | BASSA — placeholder standard |
@@ -462,9 +505,25 @@ Conversazione di test in chat: "ciao, chi sei?" — l'agente dovrebbe rispondere
 python -m agent.tests.bench_models --role <role>
 ```
 
-Confronta latenza + lunghezza risposta tra candidati. La qualità richiede review umana sui contenuti. Per il coding-agent, includi un task di editing reale su file sandbox (patch corretta = pass).
+Confronta latenza + lunghezza risposta tra candidati. La qualità richiede review umana sui contenuti. Va bene per Writer/Analyzer; per il coder usa l'eval oggettiva (5.5).
 
-### 5.5 Workflow live (più costoso)
+### 5.5 Eval del coding-agent — golden task (verdetto oggettivo)
+
+```bash
+python -m agent.tests.eval_coder --models glm-5.2,gemini-3.1-pro-preview
+```
+
+Per ogni candidato × ogni golden task: fixture copiata in workdir temporaneo →
+il coder esegue il task → i comandi `verify` del task decidono PASS/FAIL.
+Scoreboard finale + `eval_results.json`.
+
+**I golden task vanno presi da manutenzioni REALI già fatte a mano** sul
+progetto (bug corretti, refactoring): sono il benchmark più onesto. Copri:
+bugfix puntuale, refactoring multi-file, feature con test già scritto, e un
+task impossibile-senza-contesto (PASS = il modello dichiara il blocco invece
+di inventare). Consuma token reali: parti con 1 modello × 1 task.
+
+### 5.6 Workflow live (più costoso)
 
 Esegui il workflow su environment di staging (mai produzione al primo run). Verifica:
 - File output prodotti correttamente
@@ -473,15 +532,16 @@ Esegui il workflow su environment di staging (mai produzione al primo run). Veri
 - Nessuna scrittura inattesa su sistemi esterni
 - Per run schedulate: `LAST_RUN.md` aggiornato anche in caso di crash parziale; dry-run non scrive dati di dominio; nessun segreto nei log
 
-### 5.6 Iterazione
+### 5.7 Iterazione
 
 - Tono sbagliato → raffina `agent_system_prompt.md`
 - Proposte cattive → raffina le instructions del ruolo che le genera (es. `coach.py`)
 - Tool calling errato → cambia modello (default → candidate alternativo)
-- Coding-agent che "gira a vuoto" (troppe tool call, poco progresso) → mission più specifica in `TASK_QUEUE.md`, allowlist più mirata, o modello con agentic coding più forte
+- Coding-agent che "gira a vuoto" (troppe tool call, poco progresso) → mission più specifica in `TASK_QUEUE.md`, delega allo Scout più aggressiva, o modello con agentic coding più forte (decidi con `eval_coder`)
+- Coding-agent che lascia lavoro rotto → controlla che segua il ciclo checkpoint→verify→rollback; se lo salta, rinforza le instructions del ruolo
 - Boundaries non rispettate → **rinforza** il system prompt e la denylist del guard, NON rilassare i confini
 
-### 5.7 Test interfaccia Telegram (se scaffoldata)
+### 5.8 Test interfaccia Telegram (se scaffoldata)
 
 ```bash
 # In altro terminale (AgentOS deve essere up):
@@ -563,11 +623,12 @@ Prima di dichiarare "fatto":
 4. I ruoli che ho proposto riflettono il dominio specifico?
 5. I modelli hanno default + candidates per A/B testing?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
-7. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
-8. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?
-9. Ho documentato il deploy in `runbook.md` (e l'operatività in `docs/ops/RUNBOOK.md` se schedulato)?
-10. Le boundaries hard sono nel system prompt + nella denylist del guard + nelle instructions del Critic?
-11. L'audit trail è scritto da qualche parte?
-12. `docs/OPENCODE_HARVEST.md` registra cosa è stato preso da opencode e da quale versione?
+7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo checkpoint→edit→verify→rollback?
+8. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
+9. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?
+10. Ho documentato il deploy in `runbook.md` (e l'operatività in `docs/ops/RUNBOOK.md` se schedulato)?
+11. Le boundaries hard sono nel system prompt + nella denylist del guard + nelle instructions del Critic?
+12. L'audit trail è scritto da qualche parte?
+13. `docs/OPENCODE_HARVEST.md` registra cosa è stato preso da opencode e da quale versione?
 
 Se anche solo una risposta è "no" o "forse", torna indietro e correggi.

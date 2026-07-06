@@ -43,6 +43,9 @@ PERMISSIONS = {
     "grep": "allow",
     "lsp": "allow",
     "todo": "allow",
+    "repomap": "allow",
+    "verify": "allow",   # esegue solo la definition-of-done dichiarata
+    "gitops": "allow",   # vincolato by-construction: solo branch agent/*, mai push
     "edit": {{ permissions.edit | default('"propose"') }},
     "write": {{ permissions.write | default('{"docs/ops/**": "allow", "*": "propose"}') }},
     "apply_patch": {{ permissions.apply_patch | default('"propose"') }},

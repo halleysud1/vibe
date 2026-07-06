@@ -1,0 +1,109 @@
+"""Tool gitops: checkpoint, diff e rollback git per il coding-agent.
+
+Sicurezza by-construction (agentify 4.1.0):
+- il ruolo lavora SEMPRE su un branch `agent/<slug>`: il primo checkpoint lo
+  crea; su main/master i tool si rifiutano di operare
+- niente push, niente merge, niente reset fuori dal branch agent: queste
+  operazioni restano umane (o propose-and-confirm)
+- git_propose_diff scrive il DIFF REALE in OUTBOX: chi approva rivede codice,
+  non una descrizione
+
+Non passa da run_shell: i comandi git sono interni e vincolati, il guard
+valuta il tool 'gitops' nel suo complesso.
+"""
+import re
+import subprocess
+
+from agent.tools.guard import GUARD, OUTBOX_FILE, PROJECT_ROOT
+
+_BRANCH_PREFIX = "agent/"
+
+
+def _git(*args, check=True):
+    r = subprocess.run(
+        ["git", *args], capture_output=True, text=True, timeout=60,
+        cwd=str(PROJECT_ROOT), encoding="utf-8", errors="replace",
+    )
+    if check and r.returncode != 0:
+        raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()[:300]}")
+    return r.stdout.strip()
+
+
+def _current_branch():
+    return _git("rev-parse", "--abbrev-ref", "HEAD")
+
+
+def _ensure_agent_branch(task_slug="work"):
+    branch = _current_branch()
+    if branch.startswith(_BRANCH_PREFIX):
+        return branch
+    slug = re.sub(r"[^a-z0-9-]+", "-", task_slug.lower()).strip("-") or "work"
+    target = f"{_BRANCH_PREFIX}{slug}"
+    existing = _git("branch", "--list", target)
+    _git("checkout", *(["-b", target] if not existing else [target]))
+    return target
+
+
+def git_checkpoint(label: str, task_slug: str = "work") -> str:
+    """Create a git checkpoint (commit) of the current work on the agent branch.
+
+    - Call BEFORE starting a risky batch of edits and AFTER each verified batch.
+    - First call switches/creates branch `agent/<task_slug>` automatically;
+      refuses to commit on main/master.
+    - label: short description of the state being saved.
+    """
+    GUARD.gate("gitops", {"summary": f"checkpoint: {label}"})
+    branch = _ensure_agent_branch(task_slug)
+    _git("add", "-A")
+    if not _git("status", "--porcelain", check=False):
+        return f"OK: nulla da salvare (branch {branch} pulito)"
+    _git("commit", "-m", f"agent-checkpoint: {label}", check=True)
+    sha = _git("rev-parse", "--short", "HEAD")
+    return f"OK: checkpoint {sha} su {branch} — {label}"
+
+
+def git_diff(base: str = "") -> str:
+    """Show the diff of current work: uncommitted changes, or since `base`
+    (a checkpoint sha or branch) if provided. Use before proposing or
+    concluding, to review exactly what changed."""
+    GUARD.gate("gitops", {"summary": f"diff {base or 'worktree'}"})
+    out = _git("diff", base) if base else _git("diff", "HEAD", check=False)
+    return out[:30000] or "(nessuna differenza)"
+
+
+def git_revert_to_checkpoint(sha: str = "") -> str:
+    """Discard current changes and return to a checkpoint (default: last commit
+    on the agent branch). USE when verify() stays red after MAX_VERIFY_CYCLES:
+    better a clean rollback than broken code left behind. Refuses outside
+    agent/* branches."""
+    GUARD.gate("gitops", {"summary": f"revert to {sha or 'HEAD'}"})
+    branch = _current_branch()
+    if not branch.startswith(_BRANCH_PREFIX):
+        return f"ERROR: revert consentito solo su branch {_BRANCH_PREFIX}* (sei su {branch})"
+    _git("checkout", "--", ".")
+    _git("clean", "-fd")
+    if sha:
+        _git("reset", "--hard", sha)
+    return f"OK: ripristinato a {sha or 'ultimo checkpoint'} su {branch}"
+
+
+def git_propose_diff(title: str, reason: str = "") -> str:
+    """Append the REAL diff of the agent branch (vs its fork point) to
+    OUTBOX.md as a propose-and-confirm entry. A human reviews actual code.
+    Use when the task is done and verified but merging is not yours to do."""
+    GUARD.gate("gitops", {"summary": f"propose diff: {title}"})
+    branch = _current_branch()
+    base = _git("merge-base", "HEAD", "main", check=False) or \
+           _git("merge-base", "HEAD", "master", check=False)
+    diff = (_git("diff", f"{base}..HEAD", check=False) if base else git_diff())[:20000]
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
+    entry = (
+        f"\n## {ts} — proposta diff: {title}\n\n"
+        f"- branch: `{branch}`\n- motivazione: {reason or '(vedi mission)'}\n"
+        f"- stato: PENDING\n\n```diff\n{diff}\n```\n"
+    )
+    OUTBOX_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with OUTBOX_FILE.open("a", encoding="utf-8") as f:
+        f.write(entry)
+    return f"OK: diff di {branch} proposto in OUTBOX ({title})"

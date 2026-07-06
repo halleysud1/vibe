@@ -38,12 +38,17 @@ vendorizzato come dipendenza runtime.
 | `session/prompt/plan.txt` | `prompts/coding_agent/plan.md` | Reminder read-only per modalita' plan |
 | Modello permessi (`opencode.json`: allow/ask/deny + pattern bash) | `agno/tools/guard.py` (`PERMISSIONS`) | `ask` interattivo → `propose` asincrono via OUTBOX (contesto unattended) |
 | Agent modes Build/Plan | Fase 3.5 SKILL.md (mapping autonomia) | Build ≈ L4 con guard; Plan ≈ L0-L2 + `plan.md` reminder |
+| `tool/task.{ts,txt}` *(harvestato in 4.1.0)* | `agno/role_scout.py` + regole di delega in `role_coding_agent.py` | Subagent spawning re-espresso come ruolo Scout del team Agno (modello fast/cheap, read-only, contesto separato); dal `.txt`: prompt di delega dettagliato, dichiarare cosa deve tornare, research-only esplicito, no duplicazione |
+
+**Harness NON derivato da opencode** (nostro per design, 4.1.0): `verify.py`
+(definition-of-done runner), `gitops.py` (checkpoint/rollback branch agent/*,
+propose col diff reale), `repomap.py` (mappa simboli, pattern alla Aider),
+`eval_coder.py` + `golden_tasks.yaml` (eval a esito oggettivo).
 
 ## Cosa NON e' stato preso (deliberatamente)
 
 - Il runtime (client/server, TUI, desktop app, `opencode serve`, SDK): il
   ciclo ReAct resta quello dell'engine scelto in Fase 2 (Agno di default)
-- `tool/task.ts` (subagent spawning): in agentify la delega e' del Team Agno
 - `tool/question.ts`, `tool/skill.ts`: coperti da AgentOS / skill_loader
 - Prompt model-specific minori (`codex.txt`, `kimi.txt`, `beast.txt`,
   `trinity.txt`): la variante `default.md` fa da fallback
