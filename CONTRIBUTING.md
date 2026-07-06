@@ -39,11 +39,11 @@ Formato: `tipo: descrizione`
 | `refactor` | Refactoring senza cambio di comportamento |
 | `test` | Aggiunta o modifica test |
 
-## Struttura del plugin (v3.0)
+## Struttura del plugin
 
 ```
 .claude-plugin/     → Manifest e marketplace config
-commands/           → Comandi slash (solo /vibecoding:init in v3.0)
+commands/           → Comandi slash (solo /vibecoding:init)
 skills/             → Skill in cartelle dedicate (skills/<nome>/SKILL.md)
 templates/          → Template copiati nei progetti utente
 docs/               → Documentazione del plugin (es. migration guide)

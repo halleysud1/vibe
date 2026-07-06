@@ -7,7 +7,7 @@ description: "Inizializza un progetto vibecoding SDD: distingue modulo software 
 
 ## Cosa devi fare
 
-L'utente sta inizializzando un progetto vibecoding (v3.0 — SDD toolkit). Il tuo
+L'utente sta inizializzando un progetto vibecoding (SDD toolkit). Il tuo
 lavoro è **capire cosa vuole prima di costruire**, e poi distribuire correttamente
 le sue desiderata in tre sedi:
 
@@ -116,7 +116,7 @@ adattarti al contesto già fornito.
 
 ---
 
-## FASE C — Routing 3-vie (cuore di v3.0)
+## FASE C — Routing 3-vie (cuore del toolkit)
 
 Classifica ogni informazione raccolta nelle 3 sedi corrette. Mostra all'utente la
 **classificazione proposta** e attendi conferma.
@@ -228,7 +228,7 @@ Mostra all'utente:
 Aggiungi a `decisions.log` (se esiste o se vuoi crearlo):
 
 ```
-2026-MM-DD / init / Progetto inizializzato con vibecoding v3.0.
+2026-MM-DD / init / Progetto inizializzato con vibecoding.
 Tipo: <modulo|cartella>. Skill scritte: <nome1>, <nome2>.
 Vincoli L2 chiave: <riassunto>.
 ```

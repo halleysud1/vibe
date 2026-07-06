@@ -1,4 +1,6 @@
-# Vibecoding 4.0 - SDD toolkit per Claude Code
+# Vibecoding - SDD toolkit per Claude Code
+
+> Versione corrente: **4.2.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
 
 Plugin che porta il **vibecoding spec-driven development** in qualunque progetto
 Claude Code. È un repo di **skill** + un comando di bootstrap, non un sistema
@@ -10,22 +12,26 @@ di Claude Code.
 
 ---
 
-## Cosa offre v4.0
+## Cosa offre
 
 | Componente | Descrizione |
 |---|---|
 | **Skill `methodology`** | Filosofia 3 livelli (business / ecosistema / tecnico), regola anti-overfit, gestione contesto |
-| **Skill `validation-strategies`** | Strategie di validazione per tipo app (web, API, bot, CLI, pipeline, IoT) |
+| **Skill `validation-strategies`** | Checklist di scenari di validazione per tipo app (web, API, bot, CLI, pipeline, IoT); la meccanica è delegata ai tool nativi (`/verify`, `/run`, Claude Preview) |
 | **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows |
-| **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone. Include ruoli tool-empowered: **coding-agent** (tool reali edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode)) e **high-level-ops** (run schedulate), governati da tool-guard con autonomy gates L0-L5, audit trail e propose-and-confirm |
+| **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone. Ruoli tool-empowered con harness completo: **coding-agent** (tool edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode) + loop di verifica su definition-of-done, checkpoint/rollback git, **scout** a contesto separato, repo map, eval su golden task), **high-level-ops** (run schedulate) — governati da tool-guard con autonomy gates L0-L5, gate anti-degrado (metriche non-decrescenti, tetto diff, churn detector), audit trail e propose-and-confirm |
 | **Skill `skill-bootstrap`** | Intervista metodologica: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL |
 | **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (pure-python o Chromium hi-fi), con sintesi AI opzionale |
 | **Comando `/vibecoding:init`** | Entry point per bootstrappare un nuovo progetto: chiama `skill-bootstrap` |
 | **Templates** | Scaffold pronti per "modulo software" e "cartella di lavorazione Claude" |
 
-> **Breaking 4.0**: le ex skill `agentic-ops-daemon` e `claude-session-supervisor`
-> sono state consolidate in `agentify` (rispettivamente come ruolo `high-level-ops`
-> e come tool-guard). Vedi `CHANGELOG.md` per il percorso di migrazione.
+## Novità recenti (linea 4.x)
+
+- **4.2.0** — gate anti-degrado del coding-agent: metriche non-decrescenti in `verify` (baseline persistita), tetto ai diff proposti, churn detector, revisione OUTBOX anti rubber-stamping
+- **4.1.0** — harness del coding-agent: loop di verifica su definition-of-done, `gitops` (checkpoint/rollback su branch `agent/*`, diff reale in OUTBOX), ruolo `scout`, `repo_map`, `eval_coder` con golden task
+- **4.0.x** *(breaking)* — le ex skill `agentic-ops-daemon` e `claude-session-supervisor` sono consolidate in `agentify` (ruolo `high-level-ops` + tool-guard); tool layer derivato da opencode con provenance in `OPENCODE_HARVEST.md`
+
+Dettagli e percorsi di migrazione nel [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -88,7 +94,7 @@ L'utente è autoritativo su L1+L2. Claude è autonomo su L3.
 
 Esempi concreti dell'utente → **default configurabili**, non hardcoded.
 
-### Routing 3-vie (v3.0)
+### Routing 3-vie
 
 Le **regole operative ricorrenti** (es. "ogni elemento core deve avere un'attività
 futura") non vanno né in CLAUDE.md né in PROJECT_SPEC: vanno in **SKILL.md**
@@ -117,7 +123,9 @@ vibe/
 │   │   ├── OPENCODE_HARVEST.md     # provenance del tool layer (commit opencode pinnato)
 │   │   ├── scripts/                # discover.py (Fase 0: skill, MCP, OS, path sensibili)
 │   │   └── templates/
-│   │       ├── agno/               # main, ruoli (incl. coding_agent, high_level_ops), tools/
+│   │       ├── agno/               # main, ruoli (coding_agent, scout, high_level_ops),
+│   │       │   │                   #   eval_coder + golden_tasks, start/stopagent.bat
+│   │       │   └── tools/          # guard, fs, shell, verify, gitops, repomap, lsp, tasklist
 │   │       ├── prompts/            # varianti system prompt coding-agent (harvest opencode)
 │   │       └── ops/                # RUNBOOK, TASK_QUEUE, OUTBOX, AUDIT, ops-run.ps1/.sh
 │   ├── skill-bootstrap/SKILL.md
@@ -150,10 +158,11 @@ vibe/
 
 **Aggiunto**:
 - Skill `change-request` (protocollo 5 fasi)
-- Skill `agentify` (engine-agnostic, default Agno+AgentOS; dalla 4.0 con ruoli
-  tool-empowered `coding-agent` e `high-level-ops`, tool layer derivato da opencode,
-  tool-guard con autonomy gates — assorbe le ex skill `agentic-ops-daemon` e
-  `claude-session-supervisor`, rimosse in 4.0.0)
+- Skill `agentify` (engine-agnostic, default Agno+AgentOS; dalla 4.x con ruoli
+  tool-empowered `coding-agent`/`scout`/`high-level-ops`, tool layer derivato da
+  opencode, harness con verify loop + gitops + eval golden task, tool-guard con
+  autonomy gates e gate anti-degrado — assorbe le ex skill `agentic-ops-daemon`
+  e `claude-session-supervisor`, rimosse in 4.0.0)
 - Skill `skill-bootstrap` (intervista routing 3-vie)
 - Skill `md-to-pdf` (Markdown → PDF, pure-python o Chromium hi-fi, sintesi AI opzionale)
 - Templates "modulo" / "cartella di lavorazione"

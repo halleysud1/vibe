@@ -154,7 +154,7 @@ jobs:
         run: |
           echo ""
           echo "==========================================="
-          echo "  Vibecoding 3.0 Plugin Validation Passed"
+          echo "  Vibecoding Plugin Validation Passed"
           echo "==========================================="
           echo ""
           echo "  Commands: $(ls commands/*.md | wc -l)"
