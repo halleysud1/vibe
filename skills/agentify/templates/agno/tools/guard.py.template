@@ -34,6 +34,10 @@ LOCK_FILE = OPS_DIR / ".run.lock"
 
 KILL_SWITCH_LIMIT = {{ kill_switch_limit | default(200) }}
 
+# Churn detector (4.2.0): lo stesso file modificato troppe volte nella stessa
+# run e' thrashing — il ruolo sta girando a vuoto e accumula edit incoerenti.
+CHURN_LIMIT = {{ churn_limit | default(5) }}
+
 # Permessi per tool: "allow" | "propose" | "deny", oppure dict pattern -> azione.
 # Per shell i pattern matchano il comando (fnmatch); per write/edit i path relativi.
 # Renderizzato da agent.yaml -> tools.permissions.
@@ -122,6 +126,7 @@ def _match_pattern_perm(perm, subject):
 class Guard:
     def __init__(self):
         self._counter = 0
+        self._edit_counts = {}
         self._lock = threading.Lock()
 
     # --- lock anti-concorrenza (run schedulate) ---
@@ -172,6 +177,18 @@ class Guard:
                 reason = None
             if reason:
                 self._audit(tool_name, detail_str, "DENY", "denylist_project", reason)
+                raise GuardDenied(reason)
+
+        if tool_name in ("edit", "write", "apply_patch"):
+            fp = _rel(detail.get("file_path", ""))
+            with self._lock:
+                self._edit_counts[fp] = self._edit_counts.get(fp, 0) + 1
+                edits = self._edit_counts[fp]
+            if edits > CHURN_LIMIT:
+                reason = (f"thrashing: '{fp}' modificato {edits} volte in questa run "
+                          f"(> {CHURN_LIMIT}). Fermati: rileggi il file, riporta il "
+                          "blocco o fai rollback — non insistere alla cieca.")
+                self._audit(tool_name, detail_str, "DENY", "churn_detector", reason)
                 raise GuardDenied(reason)
 
         action = self._permission_for(tool_name, detail)

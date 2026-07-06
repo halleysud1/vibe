@@ -18,6 +18,11 @@ from agent.tools.guard import GUARD, OUTBOX_FILE, PROJECT_ROOT
 
 _BRANCH_PREFIX = "agent/"
 
+# Anti rubber-stamping (4.2.0): un diff enorme in OUTBOX verra' approvato
+# senza essere letto. Oltre questa soglia di righe modificate la proposta
+# viene RIFIUTATA: spezza il lavoro in batch piu' piccoli.
+MAX_PROPOSE_DIFF_LINES = {{ max_propose_diff_lines | default(400) }}
+
 
 def _git(*args, check=True):
     r = subprocess.run(
@@ -95,7 +100,15 @@ def git_propose_diff(title: str, reason: str = "") -> str:
     branch = _current_branch()
     base = _git("merge-base", "HEAD", "main", check=False) or \
            _git("merge-base", "HEAD", "master", check=False)
-    diff = (_git("diff", f"{base}..HEAD", check=False) if base else git_diff())[:20000]
+    diff = _git("diff", f"{base}..HEAD", check=False) if base else git_diff()
+    changed = sum(1 for l in diff.splitlines()
+                  if l[:1] in ("+", "-") and not l.startswith(("+++", "---")))
+    if changed > MAX_PROPOSE_DIFF_LINES:
+        return (f"ERROR: diff troppo grande per una revisione umana affidabile "
+                f"({changed} righe modificate > {MAX_PROPOSE_DIFF_LINES}). "
+                "Spezza il lavoro in batch piu' piccoli e proponi separatamente "
+                "(un checkpoint + una proposta per unita' logica).")
+    diff = diff[:20000]
     from datetime import datetime, timezone
     ts = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     entry = (

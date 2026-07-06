@@ -1,5 +1,22 @@
 # Changelog
 
+## [4.2.0] - 2026-07-06
+
+### Added — `agentify`: gate anti-degrado (contro il "debito tecnico a velocità macchina")
+
+Il rischio principale di un coding-agent autonomo non è il guardrail che cede rumorosamente, ma il mese in cui tutto è verde e la qualità cala in silenzio. Quattro contromisure strutturali:
+
+- **Quality gates in `verify`**: supporto a check **metrici non-decrescenti** (`"metric": "non_decreasing"` — es. coverage): il comando stampa un numero, verify lo confronta con la baseline persistita in `docs/ops/.metrics.json` e fallisce se scende (anche con exit code 0, tolleranza `metric_tolerance`). Default della definition-of-done aggiornato: lint `required` + coverage come metrica.
+- **Tetto ai diff proposti** (`max_propose_diff_lines`, default 400): `git_propose_diff` rifiuta diff irrevisionabili e impone batch più piccoli — un diff che non si può leggere verrebbe approvato senza lettura.
+- **Churn detector nel guard** (`churn_limit`, default 5): stesso file modificato troppe volte nella stessa run = thrashing → DENY (`rule=churn_detector`) con istruzione di fermarsi/rollback. Nuovo test deterministico in `test_guard`.
+- **Revisione OUTBOX anti rubber-stamping** (RUNBOOK): cadenza dichiarata, staleness (`outbox_stale_days`, default 7 → escalation), "leggi il diff, non il titolo", e la regola: se approvi tutto senza leggere, riduci l'autonomia.
+- Nuovo anti-pattern **A12 "Verde = buono"**; SKILL.md dichiara il limite onesto: i gate riducono la probabilità del degrado, non la azzerano.
+
+### Changed
+- `plugin.json` / `marketplace.json`: 4.1.0 → 4.2.0.
+
+---
+
 ## [4.1.0] - 2026-07-06
 
 ### Added — `agentify`: harness del coding-agent (potenza = struttura del loop, non solo tool)

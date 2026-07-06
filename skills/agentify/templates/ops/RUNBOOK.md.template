@@ -79,13 +79,30 @@ Dopo una run: `LAST_RUN.md` per l'esito sintetico; `AUDIT.md` per la sequenza
 di decisioni (`[timestamp] tool=X decision=ALLOW|DENY|PROPOSE rule=... motivo=...`);
 `OUTBOX.md` per le proposte da approvare.
 
+## Revisione OUTBOX (anti rubber-stamping)
+
+Il propose-and-confirm vale quanto la revisione umana che lo chiude. Regole:
+
+- **Cadenza**: rivedi l'OUTBOX almeno {{ outbox_review_cadence | default("2 volte a settimana") }};
+  ogni proposta va chiusa (APPROVED/REJECTED), mai lasciata in limbo
+- **Staleness**: una proposta PENDING da piu' di {{ outbox_stale_days | default(7) }} giorni
+  e' un segnale d'allarme → escalation a {{ escalation_owner | default("il responsabile del progetto") }},
+  non accumulo silenzioso
+- **Leggi il diff, non il titolo**: le proposte di codice contengono il diff
+  reale; se un diff e' troppo grande per essere letto, RIFIUTALO e chiedi
+  batch piu' piccoli (il tool li rifiuta gia' oltre {{ max_propose_diff_lines | default(400) }} righe)
+- **Ritmo sospetto**: se ti accorgi di approvare tutto senza leggere, fermati —
+  il contenimento e' appena diventato teatro. Riduci l'autonomia (piu' `deny`,
+  meno `propose`) finche' il volume non torna revisionabile
+
 ## Recovery
 
 - **Crash della run**: il lock con PID stale viene rilevato e ripulito al run successivo
 - **Kill-switch attivato**: `AUDIT.md` registra `rule=kill_switch`; capisci perche'
   il ruolo e' andato in loop, correggi mission o permessi
-- **Proposte accumulate in OUTBOX**: rivedile e marca APPROVED/REJECTED; una
-  proposta APPROVED si applica manualmente o al run successivo
+- **Churn detector attivato** (`rule=churn_detector`): il ruolo stava riscrivendo
+  lo stesso file in loop; ispeziona il branch agent/*, valuta rollback, raffina la mission
+- **Proposte accumulate in OUTBOX**: vedi "Revisione OUTBOX" sopra
 
 ## Riferimenti
 
