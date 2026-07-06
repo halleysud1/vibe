@@ -69,6 +69,15 @@ def test_kill_switch(guard):
         guard.gate("read", {"file_path": "README.md"})
 
 
+def test_churn_detector(guard, monkeypatch):
+    monkeypatch.setattr(guard_mod, "CHURN_LIMIT", 3)
+    monkeypatch.setitem(guard_mod.PERMISSIONS, "edit", "allow")
+    for _ in range(3):
+        guard.gate("edit", {"file_path": "src/x.py"})
+    with pytest.raises(GuardDenied, match="thrashing"):
+        guard.gate("edit", {"file_path": "src/x.py"})
+
+
 def test_run_lock(guard):
     guard.acquire_run_lock()
     other = Guard()

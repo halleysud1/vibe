@@ -6,14 +6,29 @@ verde (o fermarsi dopo MAX_VERIFY_CYCLES e proporre/riportare il fallimento).
 
 La definition-of-done e' del PROGETTO, non del modello: comandi oggettivi con
 exit code. Renderizzata dal manifesto (tools.definition_of_done).
+
+Quality gates (4.2.0): `verify` cattura "rotto"; per catturare "che degrada"
+un check puo' essere una METRICA non-decrescente (`"metric":
+"non_decreasing"`): il comando stampa un numero (es. coverage %), verify lo
+confronta con la baseline persistita in docs/ops/.metrics.json — se scende,
+il check FALLISCE anche con exit code 0. Il debito tecnico a velocita'
+macchina si accumula quando tutto e' verde e la qualita' cala in silenzio:
+questi gate rendono il calo visibile.
 """
+import json
+import re
 import subprocess
 
-from agent.tools.guard import GUARD, PROJECT_ROOT
+from agent.tools.guard import GUARD, OPS_DIR, PROJECT_ROOT
 
-# CUSTOMIZE dal manifesto. Ogni check: name, command, required.
-# I check con required=False sono informativi (non bloccano il verde).
-DEFINITION_OF_DONE = {{ definition_of_done | default('[{"name": "tests", "command": "pytest -q", "required": True}, {"name": "lint", "command": "ruff check .", "required": False}]') }}
+# CUSTOMIZE dal manifesto. Ogni check: name, command, required
+# (+ opzionale "metric": "non_decreasing" — il comando stampa un numero).
+# Raccomandazione anti-degrado: lint REQUIRED (non informativo) e almeno
+# una metrica non-decrescente (coverage).
+DEFINITION_OF_DONE = {{ definition_of_done | default('[{"name": "tests", "command": "pytest -q", "required": True}, {"name": "lint", "command": "ruff check .", "required": True}, {"name": "coverage", "command": "pytest -q --cov --cov-report=term | tail -1", "required": False, "metric": "non_decreasing"}]') }}
+
+METRICS_FILE = OPS_DIR / ".metrics.json"
+METRIC_TOLERANCE = {{ metric_tolerance | default(0.5) }}  # calo tollerato (es. rumore coverage)
 
 # Oltre questo numero di cicli edit->verify falliti, il ruolo deve FERMARSI
 # (riportare il fallimento o proporre in OUTBOX), non insistere alla cieca.
@@ -47,12 +62,40 @@ def verify(only: str = "") -> str:
             out_tail = ((r.stdout or "") + (r.stderr or ""))[-_TAIL:].strip()
         except subprocess.TimeoutExpired:
             passed, out_tail = False, f"timeout ({_TIMEOUT}s)"
+        if passed and c.get("metric") == "non_decreasing":
+            passed, metric_note = _check_metric(c["name"], out_tail)
+            lines_extra = metric_note
+        else:
+            lines_extra = ""
         if not passed and c.get("required", True):
             all_green = False
         mark = "PASS" if passed else ("FAIL" if c.get("required", True) else "WARN")
-        lines.append(f"[{mark}] {c['name']} — {c['command']}")
+        lines.append(f"[{mark}] {c['name']} — {c['command']}"
+                     + (f" ({lines_extra})" if lines_extra else ""))
         if not passed:
             lines.append(out_tail or "(nessun output)")
     verdict = "VERDE — definition-of-done soddisfatta" if all_green \
         else "ROSSO — correggi e riesegui verify()"
     return verdict + "\n" + "\n".join(lines)
+
+
+def _check_metric(name, output):
+    """Metrica non-decrescente: ultimo numero nell'output vs baseline."""
+    nums = re.findall(r"\d+(?:\.\d+)?", output or "")
+    if not nums:
+        return False, "nessun valore numerico nell'output"
+    value = float(nums[-1])
+    baselines = {}
+    if METRICS_FILE.exists():
+        try:
+            baselines = json.loads(METRICS_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            baselines = {}
+    baseline = baselines.get(name)
+    if baseline is not None and value < baseline - METRIC_TOLERANCE:
+        return False, f"metrica scesa: {value} < baseline {baseline}"
+    if baseline is None or value > baseline:
+        baselines[name] = value
+        METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        METRICS_FILE.write_text(json.dumps(baselines, indent=1), encoding="utf-8")
+    return True, f"{value} (baseline {baseline if baseline is not None else 'nuova'})"

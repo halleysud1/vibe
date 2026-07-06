@@ -242,6 +242,32 @@ Il tool layer è un set di tool Python per il ciclo ReAct, **derivato da opencod
 | `gitops` (`git_checkpoint` / `git_diff` / `git_revert_to_checkpoint` / `git_propose_diff`) | Checkpoint prima/dopo ogni batch su branch `agent/*` (mai main, mai push by-construction); rollback pulito quando verify resta rosso; propose-and-confirm col **diff reale** in OUTBOX |
 | `repo_map` | Mappa compatta file → simboli (regex-based, zero dipendenze) per orientarsi senza saturare il contesto |
 
+### Quality gates & anti-degrado (4.2.0)
+
+`verify` cattura "rotto"; L0-L5 gated le azioni. Il **debito tecnico a velocità
+macchina** si accumula invece quando tutto è verde e la qualità cala in
+silenzio. Contromisure strutturali:
+
+1. **Quality gates nella definition-of-done**: lint come check `required` (non
+   informativo) e almeno una **metrica non-decrescente** (`"metric":
+   "non_decreasing"`, es. coverage) — baseline persistita in
+   `docs/ops/.metrics.json`; se la metrica scende il check fallisce anche con
+   exit code 0. Valuta anche un budget di complessità (es. `radon`/`xenon`).
+2. **Tetto ai diff proposti** (`max_propose_diff_lines`, default 400): un diff
+   irrevisionabile verrebbe approvato senza lettura — oltre soglia
+   `git_propose_diff` rifiuta e impone batch più piccoli.
+3. **Churn detector nel guard** (`churn_limit`, default 5): lo stesso file
+   modificato troppe volte nella stessa run = thrashing → DENY con istruzione
+   di fermarsi/rollback (rule `churn_detector` in AUDIT).
+4. **Revisione OUTBOX con staleness** (nel RUNBOOK): cadenza dichiarata,
+   proposte PENDING oltre `outbox_stale_days` → escalation; regola "leggi il
+   diff, non il titolo".
+
+Limite onesto da dichiarare all'utente: questi gate riducono la probabilità
+del degrado silenzioso, non la azzerano — il tetto di qualità resta quello del
+modello del coder (misuralo con `eval_coder`), e il propose-and-confirm vale
+quanto l'umano che lo rivede.
+
 **Prompt harvest**: i prompt di sistema del ruolo coding-agent derivano dalle varianti per famiglia di modello di opencode (`session/prompt/anthropic.txt`, `gemini.txt`, `gpt.txt`, `default.txt`, `plan.txt`). Lo scaffolding sceglie la variante coerente col modello selezionato in Fase 3 e la fonde con l'identità del manifesto. Le regole di delega coder→scout derivano da `task.txt` (prompt dettagliato, dichiarare esattamente cosa deve tornare, research-only esplicito, niente duplicazione del lavoro delegato).
 
 **Provenance**: ogni harvest è tracciato in `docs/OPENCODE_HARVEST.md` nel progetto target (cosa è stato preso, da quale commit/versione, con quali adattamenti, attribuzione MIT). Periodicamente si ricontrolla la repo upstream per novità: il doc è la baseline del confronto.
@@ -611,6 +637,10 @@ Un run schedulato senza kill-switch può macinare migliaia di tool call (e token
 
 Il guard non deve loggare contenuto dei file letti, valori di `.env`, o input completi se contengono dati di dominio sensibili. API key mai in repo: env vars / secret manager / `.env` gitignored.
 
+### A12. "Verde = buono" (rubber-stamping)
+
+Test verdi non significano codice buono: il degrado silenzioso passa da lì. Non rimuovere i quality gates "perché rallentano", non approvare proposte senza leggere il diff, non alzare `max_propose_diff_lines` per comodità. Se il volume di proposte supera la capacità di revisione umana, il fix è **ridurre l'autonomia**, non velocizzare le approvazioni.
+
 ---
 
 ## Checklist auto-verifica
@@ -624,6 +654,7 @@ Prima di dichiarare "fatto":
 5. I modelli hanno default + candidates per A/B testing?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
 7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo checkpoint→edit→verify→rollback?
+7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente, tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
 8. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
 9. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?
 10. Ho documentato il deploy in `runbook.md` (e l'operatività in `docs/ops/RUNBOOK.md` se schedulato)?
