@@ -10,7 +10,7 @@ di Claude Code.
 
 ---
 
-## Cosa offre v3.2
+## Cosa offre v3.3
 
 | Componente | Descrizione |
 |---|---|
@@ -19,7 +19,9 @@ di Claude Code.
 | **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows |
 | **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone |
 | **Skill `skill-bootstrap`** | Intervista metodologica: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL |
+| **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (pure-python o Chromium hi-fi), con sintesi AI opzionale |
 | **Skill `agentic-ops-daemon`** | Progetta daemon/scheduler operativi che risvegliano una CLI o un coding agent, eseguono check/refresh/report e lasciano audit trail |
+| **Skill `claude-session-supervisor`** | Fa girare una sessione `claude -p` non interattiva (worker) governata da un secondo `claude -p` (AI judge) via hook `PreToolUse`: gating multi-livello, audit trail, kill-switch |
 | **Comando `/vibecoding:init`** | Entry point per bootstrappare un nuovo progetto: chiama `skill-bootstrap` |
 | **Templates** | Scaffold pronti per "modulo software" e "cartella di lavorazione Claude" |
 
@@ -113,7 +115,15 @@ vibe/
 │   │   ├── scripts/
 │   │   └── templates/
 │   ├── skill-bootstrap/SKILL.md
-│   └── agentic-ops-daemon/SKILL.md
+│   ├── md-to-pdf/
+│   │   ├── SKILL.md
+│   │   ├── scripts/
+│   │   └── styles/
+│   ├── agentic-ops-daemon/SKILL.md
+│   └── claude-session-supervisor/
+│       ├── SKILL.md
+│       ├── scripts/                # discover.py (Fase 0)
+│       └── templates/              # supervisor.py, wake_worker.ps1/.sh, settings, ops files
 ├── templates/
 │   ├── modulo/                      # scaffold "modulo software"
 │   ├── cartella/                    # scaffold "cartella di lavorazione"
@@ -141,7 +151,9 @@ vibe/
 - Skill `change-request` (protocollo 5 fasi)
 - Skill `agentify` (engine-agnostic, default Agno+AgentOS)
 - Skill `skill-bootstrap` (intervista routing 3-vie)
+- Skill `md-to-pdf` (Markdown → PDF, pure-python o Chromium hi-fi, sintesi AI opzionale)
 - Skill `agentic-ops-daemon` (daemon/scheduler operativi con CLI, runbook, audit trail e autonomy gates)
+- Skill `claude-session-supervisor` (sessione `claude -p` non interattiva con AI judge via hook `PreToolUse`)
 - Templates "modulo" / "cartella di lavorazione"
 
 **Migrato**:
