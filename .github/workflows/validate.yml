@@ -54,6 +54,7 @@ jobs:
             "skills/agentify/templates/agno/tools/verify.py.template" \
             "skills/agentify/templates/agno/tools/gitops.py.template" \
             "skills/agentify/templates/agno/tools/repomap.py.template" \
+            "skills/agentify/templates/agno/tools/context.py.template" \
             "skills/agentify/templates/agno/role_coding_agent.py.template" \
             "skills/agentify/templates/agno/role_high_level_ops.py.template" \
             "skills/agentify/templates/agno/role_scout.py.template" \

@@ -1,5 +1,26 @@
 # Changelog
 
+## [4.3.0] - 2026-07-08
+
+### Added — `agentify`: orientamento decisionale del coding-agent (contro la context-blindness)
+
+Nasce da un incidente reale: un coding-agent ha aggiunto una funzione **corretta** (matematica giusta, test verdi, convenzioni rispettate) sopra un pannello con un difetto dati noto e già fixato nei moduli gemelli, documentato nel decision journal del progetto — risultato plausibile ma sbagliato del 60%. Il coder è affidabile sul **locale** e cieco sul **globale**; la contromisura è rendere l'orientamento **meccanico** (un tool call), non affidarlo al prompt.
+
+- **Nuovo tool `project_context(keywords)`** (`tools/context.py.template`, nostro per design come verify/gitops/repo_map): in una chiamata restituisce stato corrente + entry del decision journal pertinenti per keyword + ADR pertinenti. Nei toolset di coding-agent e scout.
+- **Nuovo tool `log_decision(summary)`**: chiude il loop appendendo la change al journal (cosa/perché/come verificata, min 60 char). Anche in high-level-ops. Test verdi senza journal entry = lavoro incompleto.
+- **Ciclo del coding-agent** aggiornato (*orienta → checkpoint → edita → verifica → chiudi*): `project_context` OBBLIGATORIO al passo 1 con il monito "il codice circostante NON è una specifica affidabile"; al passo 4 **plausibilità del risultato** oltre ai test (ordine di grandezza vs letteratura/funzione analoga/dati reali — un numero assurdo con test verdi è un bug di contesto: indagare i DATI); al passo 5 `log_decision` obbligatoria.
+- Nuovo anti-pattern **A13 "Il codice circostante come specifica (context-blindness)"**, col caso reale.
+
+### Fixed
+- **AFC di google-genai disabilitato** nel provider Gemini di `_models.py.template` (wrapper `_GeminiNoAFC`, fallback pulito): l'Automatic Function Calling ha un tetto default di **10 remote call** — un limite nascosto che tronca silenziosamente i task multi-tool quando è il framework a guidare il loop.
+- **Sicurezza interfaccia chat**: accanto alla whitelist, documentato il livello **RBAC multi-utente** — autorizzazione a livello di TOOL (closure con scope verificato in codice, default-deny, niente shell/editing ai ruoli ristretti), non nel system prompt.
+
+### Changed
+- CI `validate.yml`: `context.py.template` tra i required.
+- `plugin.json` / `marketplace.json`: 4.2.0 → 4.3.0.
+
+---
+
 ## [4.2.0] - 2026-07-06
 
 ### Added — `agentify`: gate anti-degrado (contro il "debito tecnico a velocità macchina")

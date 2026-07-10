@@ -1,6 +1,6 @@
 # Vibecoding - SDD toolkit per Claude Code
 
-> Versione corrente: **4.2.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
+> Versione corrente: **4.3.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
 
 Plugin che porta il **vibecoding spec-driven development** in qualunque progetto
 Claude Code. È un repo di **skill** + un comando di bootstrap, non un sistema
@@ -27,6 +27,7 @@ di Claude Code.
 
 ## Novità recenti (linea 4.x)
 
+- **4.3.0** — orientamento decisionale del coding-agent: tool `project_context` (storia decisionale in una chiamata, obbligatorio prima di editare) + `log_decision` (chiusura del loop sul journal), plausibilità del risultato oltre ai test, anti-pattern A13 "context-blindness"; fix AFC nascosto su Gemini + RBAC multi-utente
 - **4.2.0** — gate anti-degrado del coding-agent: metriche non-decrescenti in `verify` (baseline persistita), tetto ai diff proposti, churn detector, revisione OUTBOX anti rubber-stamping
 - **4.1.0** — harness del coding-agent: loop di verifica su definition-of-done, `gitops` (checkpoint/rollback su branch `agent/*`, diff reale in OUTBOX), ruolo `scout`, `repo_map`, `eval_coder` con golden task
 - **4.0.x** *(breaking)* — le ex skill `agentic-ops-daemon` e `claude-session-supervisor` sono consolidate in `agentify` (ruolo `high-level-ops` + tool-guard); tool layer derivato da opencode con provenance in `OPENCODE_HARVEST.md`
