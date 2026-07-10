@@ -468,9 +468,16 @@ chat consumer-facing. Pattern raccomandato: **Telegram**.
 Pattern Agno: `agno.os.interfaces.{telegram, slack, whatsapp, a2a, agui}`. Lo scaffolding copre
 Telegram; le altre interface seguono lo stesso schema (sostituibili dall'utente).
 
-**Sicurezza** (correlato al boundary "MAI output verso esterni"): chi può scrivere al bot
-accede all'agente. Whitelist via `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
-bot. Per webhook nativo, valutare auth gateway (bearer token / IP allowlist).
+**Sicurezza & permessi** (correlato al boundary "MAI output verso esterni"): chi può
+scrivere al bot accede all'agente. Due livelli:
+- **Whitelist** (base, on/off): `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
+  bot. Per webhook nativo, valutare auth gateway (bearer token / IP allowlist).
+- **RBAC** (multi-utente con permessi differenziati): mappa `utente → ruolo →
+  capabilities + scope` e **applica l'autorizzazione a livello di TOOL**, non nel system
+  prompt — un LLM con tool ad ampio raggio non si vincola a istruzioni testuali. Costruisci
+  i tool concessi al ruolo come closure che verificano lo scope in codice (default-deny) e
+  ai ruoli ristretti non esporre affatto shell/editing. È lo stesso principio del
+  tool-guard (Fase 3.5) applicato all'identità di chi scrive.
 
 **Setup Telegram (step-by-step)**:
 1. `@BotFather` su Telegram → `/newbot` → ottieni token
