@@ -1,0 +1,95 @@
+"""Orientamento sulla storia decisionale del progetto (harness 4.3.0).
+
+Tool NON derivati da opencode — nostri per design, come verify/gitops/repo_map.
+Nascono da un incidente reale: un coding-agent ha scritto una funzione corretta
+(matematica giusta, test verdi) sopra un pannello che aveva un difetto dati noto
+e gia' fixato nei moduli gemelli — risultato plausibile ma sbagliato. Il codice
+circostante NON e' una specifica affidabile; la storia decisionale del progetto
+(journal, ADR, stato) si'.
+
+- ``project_context(keywords)`` — in UNA chiamata: stato corrente + entry del
+  decision journal pertinenti + ADR pertinenti. Rende economico il passo
+  "orienta" del ciclo (un tool call invece di N letture che l'agente non fa).
+- ``log_decision(summary)`` — chiude il loop: appende la change al journal.
+  Test verdi senza journal entry = lavoro incompleto.
+
+TODO durante scaffolding: adatta i path ai journal reali del progetto (o creali:
+un decisions.log append-only e' il minimo vitale). Se il progetto non ha ADR o
+state file, lascia i path — i blocchi mancanti vengono saltati.
+"""
+from __future__ import annotations
+
+import re
+from datetime import UTC, datetime
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parents[2]
+
+# Journal del progetto (adatta allo scaffolding; i file assenti sono saltati).
+DECISIONS_LOG = _ROOT / "decisions.log"
+ADR_INDEX = _ROOT / "docs" / "decisions" / "README.md"
+STATE_FILE = _ROOT / "docs" / "ops" / "STATE.md"
+
+_MAX_OUTPUT = 9_000
+_MAX_ENTRY = 900
+_MIN_SUMMARY = 60
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return ""
+
+
+def project_context(keywords: str = "") -> str:
+    """Contesto decisionale del modulo che stai per toccare — chiamalo PRIMA
+    di modificare codice. ``keywords`` = parole chiave del modulo (es.
+    'withdrawal, proxy'). Ritorna: stato corrente, decisioni recenti
+    pertinenti dal journal, ADR pertinenti. Vuoto = tutto, non filtrato."""
+    kws = [k.strip().lower() for k in re.split(r"[,\s]+", keywords or "") if k.strip()]
+
+    def _hit(line: str) -> bool:
+        low = line.lower()
+        return not kws or any(k in low for k in kws)
+
+    parts: list[str] = []
+    state = _read(STATE_FILE)
+    if state:
+        parts.append("## Stato corrente\n" + state[:3000])
+    journal = _read(DECISIONS_LOG)
+    if journal:
+        entries = [ln for ln in journal.splitlines() if ln.startswith("[") and _hit(ln)]
+        if entries:
+            parts.append(
+                "## Decision journal — ultime pertinenti\n"
+                + "\n\n".join(e[:_MAX_ENTRY] for e in entries[-4:])
+            )
+    adr = _read(ADR_INDEX)
+    if adr:
+        rows = [ln for ln in adr.splitlines() if ln.startswith("| [ADR") and _hit(ln)]
+        if rows:
+            parts.append(
+                "## ADR pertinenti (leggi quelli che toccano il modulo)\n"
+                + "\n".join(rows[-10:])
+            )
+    return "\n\n".join(parts)[:_MAX_OUTPUT] or "(nessun contesto per queste keyword)"
+
+
+def log_decision(summary: str) -> str:
+    """Registra la change nel decision journal (chiusura del loop, OBBLIGATORIA
+    a fine lavoro): cosa hai fatto, perche', come l'hai verificata."""
+    text = (summary or "").strip().replace("\n", " ")
+    if len(text) < _MIN_SUMMARY:
+        return (
+            f"riassunto troppo corto: descrivi cosa/perche'/verifica "
+            f"(minimo {_MIN_SUMMARY} caratteri)"
+        )
+    stamp = datetime.now(UTC).replace(microsecond=0).isoformat()
+    try:
+        DECISIONS_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with DECISIONS_LOG.open("a", encoding="utf-8") as fh:
+            fh.write(f"\n[{stamp}] AGENT | {text}\n")
+    except OSError as exc:
+        return f"errore scrittura journal: {exc}"
+    return "ok: decisione registrata nel journal"

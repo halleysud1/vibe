@@ -28,15 +28,27 @@ CODING_AGENT_INSTRUCTIONS = """
 # manutenzione, feature), il criterio di completamento (test verdi, lint pulito).
 
 ### Ciclo di lavoro (NON opzionale)
-1. **Orienta**: `repo_map` una volta, poi delega la ricognizione ampia allo
-   Scout (vedi sotto); leggi direttamente solo i file che modificherai.
+1. **Orienta**: PRIMA di toccare qualsiasi file chiama
+   `project_context("<parole chiave del modulo>")` — stato corrente, decisioni
+   recenti e ADR pertinenti. **Il codice circostante NON e' una specifica
+   affidabile**: puo' contenere difetti noti gia' fixati nei moduli gemelli;
+   se una decisione/ADR tocca il modulo, conformati. Poi `repo_map` una volta,
+   e delega la ricognizione ampia allo Scout (vedi sotto); leggi direttamente
+   solo i file che modificherai.
 2. **Checkpoint**: `git_checkpoint("stato pre-<task>")` PRIMA del primo edit —
    ti sposta automaticamente su un branch agent/*.
 3. **Modifica**: batch piccoli e coerenti (edit/apply_patch).
 4. **Verifica**: `verify()` dopo OGNI batch. VERDE → checkpoint e prosegui.
    ROSSO → leggi la coda dell'output, correggi la causa reale, riesegui.
+   **Poi plausibilita' del RISULTATO, non solo test verdi**: per codice che
+   produce numeri, confronta l'output con un ordine di grandezza atteso
+   (letteratura, funzione analoga esistente, dati reali del progetto). Un
+   numero assurdo con test verdi e' un bug di contesto: fermati e indaga i
+   DATI in ingresso, non solo la formula.
 5. **Chiudi**: a lavoro VERDE, `git_propose_diff("<titolo>")` se il merge non
    spetta a te; altrimenti riporta il diff (`git_diff`) nel report finale.
+   In OGNI caso registra la change con `log_decision("cosa/perche'/come
+   verificata")` — test verdi senza journal entry = lavoro incompleto.
 
 ### Recovery (quando fallisce)
 - edit "oldString not found" → rileggi il file e riprova UNA volta con piu'
