@@ -161,7 +161,7 @@ Due archetipi con accesso al **tool layer** (Fase 3.5). Sono ruoli del team come
 | Archetipo | Compito | Tool layer |
 |---|---|---|
 | **coding-agent** | Modifica davvero il codice del progetto col **ciclo orienta → checkpoint → edita → verifica**: `repo_map` per orientarsi, delega ricognizione allo Scout, edit a batch, `verify()` dopo ogni batch, checkpoint/rollback git. | Completo + harness: `repo_map`, fs, `shell`, `verify`, `gitops`, `lsp`, `todo`, `webfetch` |
-| **scout** | Ricognizione a contesto separato per il coding-agent: search/read/sintesi su modello fast/cheap, restituisce solo ciò che serve (path:riga, firme, convenzioni). Il contesto del coder resta pulito. Deriva dal tool `task` di opencode. | Read-only: `repo_map`, `read`, `glob`, `grep`, `lsp` |
+| **scout** | Ricognizione a contesto separato per il coding-agent: search/read/sintesi su modello fast/cheap, restituisce solo ciò che serve (path:riga, firme, convenzioni). Il contesto del coder resta pulito. Deriva dal tool `task` di opencode. | Read-only: `repo_map`, `project_context`, `read`, `glob`, `grep`, `lsp` |
 | **high-level-ops** | Operatore disciplinato schedulato: health check, refresh dati idempotenti, report, memo, proposte. Erede dell'ex skill `agentic-ops-daemon`. | Ridotto: `read`, `glob`, `grep`, `shell` (comandi CLI del progetto), `write` (solo su output dir), `verify` |
 
 **Il giudizio resta del modello del ruolo, scelto nell'intervista.** Il tool layer fornisce capacità, non decisioni: la valutazione di cosa fare la fa il modello del ruolo (con il Critic come second opinion), non uno strato esterno.
@@ -241,6 +241,8 @@ Il tool layer è un set di tool Python per il ciclo ReAct, **derivato da opencod
 | `verify` | Esegue la **definition-of-done** del progetto (test, lint, build — comandi con exit code, dichiarati nel manifesto). Il coder DEVE chiamarlo dopo ogni batch di edit e iterare fino a VERDE, o fermarsi dopo `max_verify_cycles` |
 | `gitops` (`git_checkpoint` / `git_diff` / `git_revert_to_checkpoint` / `git_propose_diff`) | Checkpoint prima/dopo ogni batch su branch `agent/*` (mai main, mai push by-construction); rollback pulito quando verify resta rosso; propose-and-confirm col **diff reale** in OUTBOX |
 | `repo_map` | Mappa compatta file → simboli (regex-based, zero dipendenze) per orientarsi senza saturare il contesto |
+| `project_context` (4.3.0) | Orientamento sulla **storia decisionale**: in una chiamata, stato corrente + entry del decision journal pertinenti per keyword + ADR pertinenti. Obbligatorio nel passo 1 del ciclo: il codice circostante NON è una specifica affidabile (vedi A13) |
+| `log_decision` (4.3.0) | Chiusura del loop: appende la change al decision journal del progetto (cosa/perché/come verificata). Test verdi senza journal entry = lavoro incompleto |
 
 ### Quality gates & anti-degrado (4.2.0)
 
@@ -444,6 +446,7 @@ I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja
 | `agno/role_scout.py.template` | BASSA — quasi-copia; modello dal manifesto |
 | `agno/tools/verify.py.template` | MEDIA — definition-of-done dal manifesto |
 | `agno/tools/gitops.py.template` / `repomap.py.template` | BASSA — quasi-copia |
+| `agno/tools/context.py.template` | MEDIA — path dei journal (decisions.log/ADR/STATE) dal progetto; se mancano, crearli è parte dello scaffolding |
 | `agno/eval_coder.py.template` | BASSA — quasi-copia |
 | `agno/golden_tasks.yaml.template` | ALTA — task presi da manutenzioni reali del progetto |
 | `ops/RUNBOOK.md.template` | MEDIA — profili e comandi del progetto |
@@ -465,9 +468,16 @@ chat consumer-facing. Pattern raccomandato: **Telegram**.
 Pattern Agno: `agno.os.interfaces.{telegram, slack, whatsapp, a2a, agui}`. Lo scaffolding copre
 Telegram; le altre interface seguono lo stesso schema (sostituibili dall'utente).
 
-**Sicurezza** (correlato al boundary "MAI output verso esterni"): chi può scrivere al bot
-accede all'agente. Whitelist via `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
-bot. Per webhook nativo, valutare auth gateway (bearer token / IP allowlist).
+**Sicurezza & permessi** (correlato al boundary "MAI output verso esterni"): chi può
+scrivere al bot accede all'agente. Due livelli:
+- **Whitelist** (base, on/off): `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
+  bot. Per webhook nativo, valutare auth gateway (bearer token / IP allowlist).
+- **RBAC** (multi-utente con permessi differenziati): mappa `utente → ruolo →
+  capabilities + scope` e **applica l'autorizzazione a livello di TOOL**, non nel system
+  prompt — un LLM con tool ad ampio raggio non si vincola a istruzioni testuali. Costruisci
+  i tool concessi al ruolo come closure che verificano lo scope in codice (default-deny) e
+  ai ruoli ristretti non esporre affatto shell/editing. È lo stesso principio del
+  tool-guard (Fase 3.5) applicato all'identità di chi scrive.
 
 **Setup Telegram (step-by-step)**:
 1. `@BotFather` su Telegram → `/newbot` → ottieni token
@@ -641,6 +651,10 @@ Il guard non deve loggare contenuto dei file letti, valori di `.env`, o input co
 
 Test verdi non significano codice buono: il degrado silenzioso passa da lì. Non rimuovere i quality gates "perché rallentano", non approvare proposte senza leggere il diff, non alzare `max_propose_diff_lines` per comodità. Se il volume di proposte supera la capacità di revisione umana, il fix è **ridurre l'autonomia**, non velocizzare le approvazioni.
 
+### A13. Il codice circostante come specifica (context-blindness)
+
+Caso reale: un coding-agent ha aggiunto una funzione a un pannello esistente — matematica corretta, test verdi, convenzioni rispettate — ereditandone però un difetto dati **noto e già fixato nei moduli gemelli** (documentato nel decision journal del progetto). Risultato plausibile ma sbagliato del 60%. Il coder è affidabile sul **locale** (funzione, test) e cieco sul **globale** (storia delle decisioni, difetti latenti adiacenti). Contromisure: (1) `project_context` obbligatorio nel passo 1 del ciclo — la storia decisionale è la specifica, il codice circostante no; (2) plausibilità del **risultato** oltre ai test (ordine di grandezza vs letteratura/funzione analoga/dati reali); (3) `log_decision` a fine lavoro, così il prossimo agente (o umano) eredita il contesto. Se il progetto non ha un decision journal, crearlo è parte dello scaffolding: senza, questo anti-pattern non ha contromisura.
+
 ---
 
 ## Checklist auto-verifica
@@ -653,7 +667,7 @@ Prima di dichiarare "fatto":
 4. I ruoli che ho proposto riflettono il dominio specifico?
 5. I modelli hanno default + candidates per A/B testing?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
-7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo checkpoint→edit→verify→rollback?
+7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo orienta→checkpoint→edit→verify→chiudi (con `project_context` obbligatorio al passo 1 e `log_decision` alla chiusura)?
 7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente, tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
 8. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
 9. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?

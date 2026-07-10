@@ -27,7 +27,25 @@ def _provider(model_id: str):
         return OpenAIChat
     if model_id.startswith("gemini-"):
         from agno.models.google import Gemini
-        return Gemini
+
+        # GOTCHA: il client google-genai abilita l'Automatic Function Calling
+        # con tetto DEFAULT di 10 remote calls. Quando e' il framework (Agno)
+        # a guidare il tool-loop — come qui — l'AFC e' un limite NASCOSTO che
+        # tronca silenziosamente i task multi-tool. Va disabilitato.
+        try:
+            from google.genai.types import AutomaticFunctionCallingConfig
+
+            class _GeminiNoAFC(Gemini):
+                def __init__(self, **kwargs):
+                    kwargs.setdefault("generative_model_kwargs", {
+                        "automatic_function_calling":
+                            AutomaticFunctionCallingConfig(disable=True)
+                    })
+                    super().__init__(**kwargs)
+
+            return _GeminiNoAFC
+        except ImportError:  # SDK senza il tipo: meglio Gemini nudo che crash
+            return Gemini
     if model_id.startswith("deepseek-"):
         from agno.models.deepseek import DeepSeek
         return DeepSeek

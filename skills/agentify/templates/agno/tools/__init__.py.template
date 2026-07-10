@@ -4,12 +4,15 @@ Tool layer derivato da opencode (https://github.com/anomalyco/opencode,
 MIT License, commit eb6ff0c1) — vedi docs/OPENCODE_HARVEST.md.
 Harness 4.1.0: verify (definition-of-done), gitops (checkpoint/rollback),
 repo_map (orientamento), scout toolset (ricognizione a contesto separato).
+Harness 4.3.0: context (project_context = orientamento sulla storia
+decisionale, log_decision = chiusura del loop sul journal).
 
 I set riflettono la Fase 3.5 della skill agentify:
-- coding-agent: layer completo + harness (verify, gitops, repo_map)
-- scout: ricognizione read-only a contesto separato
+- coding-agent: layer completo + harness (verify, gitops, repo_map, context)
+- scout: ricognizione read-only a contesto separato (incl. project_context)
 - high-level-ops: layer ridotto (write limitato dai pattern del guard)
 """
+from agent.tools.context import log_decision, project_context
 from agent.tools.fs import (
     apply_patch, edit_file, glob_files, grep_search, read_file, write_file,
 )
@@ -25,7 +28,7 @@ from agent.tools.verify import verify
 from agent.tools.web import web_fetch
 
 CODING_AGENT_TOOLS = [
-    repo_map,
+    repo_map, project_context,
     read_file, glob_files, grep_search,
     edit_file, write_file, apply_patch,
     run_shell,
@@ -34,10 +37,11 @@ CODING_AGENT_TOOLS = [
     lsp_definition, lsp_references, lsp_document_symbols,
     todo_write, todo_read,
     web_fetch,
+    log_decision,
 ]
 
 SCOUT_TOOLS = [
-    repo_map,
+    repo_map, project_context,
     read_file, glob_files, grep_search,
     lsp_definition, lsp_references, lsp_document_symbols,
 ]
@@ -48,6 +52,7 @@ HIGH_LEVEL_OPS_TOOLS = [
     run_shell,           # limitato ai comandi CLI del progetto via pattern
     verify,              # utile anche nei profili ops (health = definition-of-done)
     todo_write, todo_read,
+    log_decision,        # anche i run ops chiudono il loop sul journal
 ]
 
 __all__ = [
@@ -55,6 +60,7 @@ __all__ = [
     "CODING_AGENT_TOOLS", "SCOUT_TOOLS", "HIGH_LEVEL_OPS_TOOLS",
     "read_file", "glob_files", "grep_search", "edit_file", "write_file",
     "apply_patch", "run_shell", "verify", "repo_map",
+    "project_context", "log_decision",
     "git_checkpoint", "git_diff", "git_revert_to_checkpoint", "git_propose_diff",
     "lsp_definition", "lsp_references", "lsp_document_symbols",
     "todo_write", "todo_read", "web_fetch",
