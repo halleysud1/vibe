@@ -23,6 +23,8 @@ import re
 from datetime import UTC, datetime
 from pathlib import Path
 
+from agent.tools.guard import GUARD
+
 _ROOT = Path(__file__).resolve().parents[2]
 
 # Journal del progetto (adatta allo scaffolding; i file assenti sono saltati).
@@ -47,6 +49,7 @@ def project_context(keywords: str = "") -> str:
     di modificare codice. ``keywords`` = parole chiave del modulo (es.
     'withdrawal, proxy'). Ritorna: stato corrente, decisioni recenti
     pertinenti dal journal, ADR pertinenti. Vuoto = tutto, non filtrato."""
+    GUARD.gate("context", {"summary": f"project_context: {keywords or 'all'}"})
     kws = [k.strip().lower() for k in re.split(r"[,\s]+", keywords or "") if k.strip()]
 
     def _hit(line: str) -> bool:
@@ -79,6 +82,7 @@ def project_context(keywords: str = "") -> str:
 def log_decision(summary: str) -> str:
     """Registra la change nel decision journal (chiusura del loop, OBBLIGATORIA
     a fine lavoro): cosa hai fatto, perche', come l'hai verificata."""
+    GUARD.gate("context", {"summary": f"log_decision: {(summary or '')[:80]}"})
     text = (summary or "").strip().replace("\n", " ")
     if len(text) < _MIN_SUMMARY:
         return (

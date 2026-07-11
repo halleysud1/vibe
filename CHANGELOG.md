@@ -1,5 +1,12 @@
 # Changelog
 
+## [4.3.1] - 2026-07-11
+
+### Fixed
+- **Context tools sotto il guard**: `project_context` e `log_decision` (introdotti in 4.3.0) ora passano da `GUARD.gate("context", ...)` come ogni altro tool del layer — audit trail, kill-switch e permessi coerenti con la spec ("enforcement attorno a ogni tool call"). Nuovo permesso `context: allow` nel default (read-only + append-only by-construction).
+
+---
+
 ## [4.3.0] - 2026-07-08
 
 ### Added — `agentify`: orientamento decisionale del coding-agent (contro la context-blindness)

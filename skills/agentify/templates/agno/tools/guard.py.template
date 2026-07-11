@@ -50,6 +50,7 @@ PERMISSIONS = {
     "repomap": "allow",
     "verify": "allow",   # esegue solo la definition-of-done dichiarata
     "gitops": "allow",   # vincolato by-construction: solo branch agent/*, mai push
+    "context": "allow",  # project_context read-only; log_decision append-only sul journal
     "edit": {{ permissions.edit | default('"propose"') }},
     "write": {{ permissions.write | default('{"docs/ops/**": "allow", "*": "propose"}') }},
     "apply_patch": {{ permissions.apply_patch | default('"propose"') }},
