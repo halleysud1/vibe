@@ -63,9 +63,16 @@ runner = PipelineRunner()
 runner.start()   # daemon: muore col processo
 ```
 
-Al riavvio il runner riprende i run non terminali dal disco e lo dichiara nel log.
-Gli stati `wait_*` sono idempotenti; gli stati di sintesi ritentano fino a
-`PIPELINE_MAX_ATTEMPTS`, poi il run va in `error` **senza** ulteriori tentativi.
+Al riavvio il runner riprende i run non terminali dal disco e lo dichiara nel log,
+segnalando quali sono in attesa di decisione. Lo stato `wait` e' idempotente; gli
+stati di sintesi ritentano fino a `PIPELINE_MAX_ATTEMPTS`, poi il run va in `error`
+**senza** ulteriori tentativi.
+
+Lo stato **`attesa_decisione`** e' non terminale ma il runner non lo tocca: il run
+resta fermo finche' un umano chiama `decide()`. E' il punto in cui la pipeline si
+rifiuta di stringere l'imbuto su un dubbio strutturale aperto — non e' un errore, e'
+il funzionamento previsto. Ci finisce anche quando il cancello non restituisce un
+JSON leggibile: il fallback e' sempre verso l'umano, mai verso "vai avanti".
 
 In alternativa, senza processo persistente: `python agent/workflows/pipeline.py serve`
 oppure uno scheduler che chiama `advance` su ogni run attivo (vedi il ruolo
@@ -78,9 +85,15 @@ Minimo indispensabile:
 
 | Comando | Cosa fa |
 |---|---|
-| avvia ricerca `<tema>` | `new_run(topic, notify_to=<chat>)` — poi ci pensa il runner |
-| stato | `list_runs(active_only=True)` + `status_text` |
+| avvia ricerca `<tema>` | `new_run(topic, notify_to=<chat>, max_doubt_rounds=N)` — il limite di ricorsione si dichiara qui, alla creazione |
+| stato | `list_runs(active_only=True)` + `status_text` (mostra dubbi aperti e profondita' della ricorsione) |
+| **decidi `<run_id>` `<scelta>`** | `decide(run_id, "altro-round"\|"procedi"\|"chiudi")` — **obbligatorio**: senza questo comando un run in `attesa_decisione` resta fermo per sempre |
 | annulla `<run_id>` | `cancel(run_id)` — il task Deep Research in volo prosegue server-side, l'artefatto viene ignorato |
+
+Le tre scelte di `decide`: **altro-round** concede un round di dubbi in piu' (alza il
+limite di uno) · **procedi** va al verticale accettando il rischio e marca il run con
+`stretto_su_dubbi_aperti: true`, che finisce nel sinottico · **chiudi** salta il
+verticale e produce un sinottico parziale coi dubbi aperti dichiarati.
 
 `research_tools.py` copre il caso diverso e complementare: **una** ricerca singola
 chiesta in chat, senza funnel.
@@ -97,6 +110,7 @@ PIPELINE_POLL_SECONDS=60
 PIPELINE_MAX_ROUND_MINUTES=45
 PIPELINE_MAX_ATTEMPTS=2
 PIPELINE_LLM_TIMEOUT=900
+PIPELINE_MAX_DOUBT_ROUNDS=2            # limite di ricorsione: 2 => fino a 4 round
 ```
 
 Nessun segreto nel repo: `.env` in `.gitignore`, `.env.example` con le chiavi vuote.
@@ -106,16 +120,29 @@ Nessun segreto nel repo: `.env` in `.gitignore`, `.env.example` con le chiavi vu
 Monkeypatcha le tre giunture e verifica la macchina a stati **senza spendere un
 minuto di Deep Research**:
 
-- [ ] `new_run` crea il JSON nello stato iniziale
-- [ ] `advance` su `compose_round0` con `_llm_call` che ritorna un prompt valido →
-      stato `wait_round0`, prompt scritto su disco, `_launch_research` chiamata
+- [ ] `new_run` crea il JSON nello stadio `r1-inquadramento`, stato `compose`, col
+      limite di ricorsione dichiarato
+- [ ] `advance` su `compose` con `_llm_call` che ritorna un prompt valido → stato
+      `wait`, prompt scritto su disco, `_launch_research` chiamata
 - [ ] `_llm_call` che ritorna testo corto/vuoto → `attempts` incrementa, e al
       raggiungimento di `MAX_ATTEMPTS` lo stato diventa `error`
-- [ ] `advance` su `wait_round0` con JSON assente e `started_at` recente → resta in
-      attesa; con `started_at` oltre `MAX_ROUND_MINUTES` → `error`
-- [ ] `advance` su `wait_round0` con JSON presente e `status=completed` → avanza;
+- [ ] `advance` su `wait` con JSON assente e `started_at` recente → resta in attesa;
+      con `started_at` oltre `MAX_ROUND_MINUTES` → `error`
+- [ ] `advance` su `wait` con JSON presente e `status=completed` → `controllo`;
       con `status=incomplete` o 0 caratteri → `error` (mai proseguire su un round
       fallito: il round successivo erediterebbe il vuoto)
+- [ ] **cancello senza dubbi strutturali** → si stringe: `r3-focus`, e se il focus e'
+      gia' fatto → `ranking`
+- [ ] **cancello con un dubbio strutturale aperto e budget disponibile** → nuovo
+      stadio `r2-dubbi<k>`, `n_round_dubbi` incrementato, notifica coi dubbi elencati
+- [ ] **cancello con dubbio aperto e budget esaurito** → `attesa_decisione`, e una
+      successiva `advance` **non modifica il run** (confrontare il JSON prima/dopo)
+- [ ] **cancello che non restituisce JSON** → `attesa_decisione` (non "vai avanti")
+- [ ] `decide(run_id, "altro-round"|"procedi"|"chiudi")` sblocca; `procedi` scrive
+      `stretto_su_dubbi_aperti: true`; una `decide` su un run non in attesa e'
+      rifiutata con messaggio
+- [ ] **i dubbi non evaporano**: un dubbio assente dalla risposta di un cancello
+      successivo conserva il suo esito precedente nel registro
 - [ ] ogni transizione produce una `notify`
 - [ ] dopo un "riavvio" (nuova istanza di runner) i run attivi vengono ripresi
 - [ ] `cancel` porta a `cancelled` e il runner lo ignora ai giri successivi
@@ -133,5 +160,11 @@ verificare i tempi veri e il formato delle notifiche, non la logica.
   migliorera' al quinto, e ogni giro costa mezz'ora.
 - **La scelta del candidato verticale** quando la posta e' alta: in quel caso
   conviene un funnel presidiato (skill Claude Code con gate umani), non full-auto.
+- **La decisione di stringere su un dubbio strutturale aperto.** E' l'unica cosa che
+  la pipeline non fa mai da sola, per costruzione: a budget esaurito va in
+  `attesa_decisione` e chiede. Se ti trovi tentato di automatizzare quel passo — un
+  default "procedi dopo N ore", un fallback silenzioso — stai riportando dentro
+  esattamente il rischio per cui il funnel e' ricorsivo. Meglio un run fermo che un
+  verticale costruito su una premessa falsa.
 - **La cancellazione degli artefatti.** I JSON dei round sono la memoria del ciclo e
   l'unica prova di cosa e' stato letto e quando. Si archiviano, non si eliminano.
