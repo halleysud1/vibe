@@ -1,0 +1,128 @@
+"""Tool di ricerca profonda per l'agente di {{ project_name }}: lancio + stato.
+
+Un round di Deep Research dura 10-40 minuti: non puo' girare dentro una run
+sincrona di chat. Il pattern e' a due tool:
+
+1. `launch_research(prompt_text, tag)` → scrive il prompt, avvia lo script
+   DETACHED, ritorna subito con i path degli artefatti.
+2. `check_research(tag)` → stato corrente: completata (con estratto), in corso
+   (tail del log), avviata-ma-morta, o non trovata.
+
+Questi tool servono per **ricerche singole** chieste in chat. Il funnel completo
+multi-round con validazione e audit sta in `pipeline.py` (state machine) o nella
+skill Claude Code `deep-research` (con gate umani).
+
+L'agente che espone questi tool va istruito a: (a) NON attendere nella stessa run,
+(b) dire all'utente che la ricerca e' partita e che verra' avvisato, (c) usare
+`check_research` solo quando l'utente chiede lo stato o quando arriva la notifica.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime
+from pathlib import Path
+
+# TODO durante lo scaffolding: allineare a come il progetto ospite risolve la root
+# e (se esiste) collegare il guard/autorizzazioni del progetto.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RESEARCH_DIR = PROJECT_ROOT / os.getenv("RESEARCH_OUT_DIR", "data/ricerche")
+DR_SCRIPT = PROJECT_ROOT / os.getenv(
+    "DEEPRESEARCH_SCRIPT", "skills/deep-research/scripts/deep_research.py")
+MAX_ROUND_MINUTES = int(os.getenv("PIPELINE_MAX_ROUND_MINUTES", "45"))
+
+
+def _paths(tag: str) -> tuple[Path, Path, Path]:
+    safe = "".join(c if c.isalnum() or c in "-_" else "-" for c in tag.strip().lower())[:60]
+    return (RESEARCH_DIR / f"{safe}_prompt.md",
+            RESEARCH_DIR / f"{safe}.json",
+            RESEARCH_DIR / f"{safe}.log")
+
+
+def launch_research(prompt_text: str, tag: str) -> str:
+    """Avvia una ricerca profonda IN BACKGROUND (10-40 minuti).
+
+    - prompt_text: prompt completo. Sii specifico: contesto del soggetto, domande
+      puntuali a cui rispondere, formato di output richiesto, fonti ufficiali da
+      privilegiare, istruzione di dichiarare l'incertezza invece di colmarla.
+    - tag: id breve kebab-case della ricerca (es. "fornitori-crm-2026").
+    - Ritorna subito. Comunica all'utente che la ricerca e' in corso e che potra'
+      chiedere lo stato; poi usa check_research(tag).
+    """
+    # TODO durante lo scaffolding: se il progetto ha un guard di autorizzazione,
+    # aprire qui il gate (azione costosa e verso l'esterno).
+    if not DR_SCRIPT.exists():
+        return f"ERRORE: script non trovato: {DR_SCRIPT}"
+    if not prompt_text or len(prompt_text.strip()) < 200:
+        return ("ERRORE: prompt troppo corto per una ricerca profonda (< 200 caratteri). "
+                "Un round costa 10-40 minuti: scrivi un prompt completo.")
+    if "{{" in prompt_text:
+        return "ERRORE: il prompt contiene segnaposto {{...}} non sostituiti."
+
+    RESEARCH_DIR.mkdir(parents=True, exist_ok=True)
+    prompt_file, out_json, log_file = _paths(tag)
+    if out_json.exists():
+        return (f"ERRORE: esiste gia' una ricerca completata con tag '{tag}' "
+                f"({out_json.name}). Usa un tag diverso, oppure leggi quella.")
+    if log_file.exists():
+        return (f"ERRORE: una ricerca con tag '{tag}' sembra gia' in corso. "
+                f"Controlla con check_research('{tag}') prima di rilanciare.")
+    prompt_file.write_text(prompt_text, encoding="utf-8")
+
+    cmd = [sys.executable, str(DR_SCRIPT),
+           "--prompt-file", str(prompt_file),
+           "--output-json", str(out_json),
+           "--log-file", str(log_file),
+           "--max-wait", str(MAX_ROUND_MINUTES * 60)]
+    agent = os.getenv("DEEPRESEARCH_AGENT")
+    if agent:
+        cmd += ["--agent", agent]
+
+    detach: dict = {}
+    if sys.platform == "win32":
+        detach["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | subprocess.DETACHED_PROCESS)
+    else:
+        detach["start_new_session"] = True
+    with open(log_file.with_suffix(".proc.log"), "a", encoding="utf-8") as lf:
+        proc = subprocess.Popen(cmd, cwd=str(PROJECT_ROOT), stdout=lf, stderr=lf, **detach)
+
+    started = datetime.now().strftime("%H:%M")
+    return (f"OK: ricerca '{tag}' avviata alle {started} (pid {proc.pid}). "
+            f"Durata tipica 10-40 minuti. NON attendere in questa run: informa "
+            f"l'utente e suggerisci di chiedere lo stato piu' tardi "
+            f"(check_research('{tag}')).")
+
+
+def check_research(tag: str) -> str:
+    """Stato di una ricerca avviata con launch_research(tag).
+
+    COMPLETATA (con estratto e path del report integrale), IN CORSO (tail del log),
+    AVVIATA MA SENZA LOG (errore precoce), o NON TROVATA.
+    """
+    _, out_json, log_file = _paths(tag)
+    if out_json.exists():
+        try:
+            d = json.loads(out_json.read_text(encoding="utf-8"))
+        except Exception as e:
+            return f"ERRORE: output presente ma illeggibile: {e}"
+        text = d.get("response_text", "")
+        rel = out_json.relative_to(PROJECT_ROOT).as_posix()
+        return (f"COMPLETATA: '{tag}' — status={d.get('status')}, "
+                f"{d.get('response_chars', len(text))} caratteri, "
+                f"{d.get('citations_count', 0)} citazioni, "
+                f"{d.get('elapsed_seconds', '?')}s.\n"
+                f"Report integrale: read_file('{rel}') (campo response_text).\n"
+                f"Ricorda: gli URL citati vanno verificati prima di riportare i dati "
+                f"all'utente come confermati.\nInizio del report:\n{text[:600]}")
+    if log_file.exists():
+        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
+        return f"IN CORSO: '{tag}' — ultime righe del log:\n" + "\n".join(lines[-6:])
+    proc_log = log_file.with_suffix(".proc.log")
+    if proc_log.exists():
+        return (f"AVVIATA MA SENZA LOG: '{tag}' — probabile errore precoce:\n"
+                + proc_log.read_text(encoding="utf-8", errors="replace")[-800:])
+    return f"NON TROVATA: nessuna ricerca con tag '{tag}'."

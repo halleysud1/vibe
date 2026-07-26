@@ -1,5 +1,33 @@
 # Changelog
 
+## [4.4.0] - 2026-07-26
+
+### Added — nuova skill `deep-research`: cicli di ricerca profonda a imbuto
+
+Il motore (Deep Research come task long-running) è la parte facile. Il valore sta nel funnel che restringe e nel doppio controllo che verifica: un report che gira 30 minuti e cita 40 fonti può sbagliare una data, un'aliquota o un riferimento normativo, e va trattato come un'affermazione da verificare, non come una risposta.
+
+- **Funnel a tre round** (esplorazione ampia → cerchia ristretta 3-6 → verticale su un candidato), con **gate umano** dopo ogni round (`AskUserQuestion`: prosegui / ri-mira / round mirato / stop anticipato) e prompt sempre mostrato e approvato **prima** del lancio: un round costa 10-40 minuti, un fraintendimento costa quel tempo due volte. Il round N+1 fa anche da verifica incrociata del round N (istruzione esplicita di confermare o smentire, con tabella di esiti).
+- **Verifica a due gambe indipendenti**: validazione degli URL citati con `WebFetch` + download dei documenti ufficiali (Fase 4); fact-check deterministico su fonte primaria con esiti CONFERMATO/SOSPETTO/NON RINTRACCIATO/CONTRADDETTO e ricalcolo di ogni numero derivato (5.1); second-opinion adversarial da un modello diverso (5.2); **matrice di accordo in cui l'arbitro è la fonte primaria, mai la maggioranza fra LLM** (5.3). Nasce da un caso reale: l'auditor ha smentito a torto due dati corretti e nello stesso giro ha trovato due errori concettuali veri.
+- **Scoring multi-dimensione** (default 5 dimensioni × 0-10, soglie di priorità configurabili) e **sinottico finale** con frontmatter auditabile: motori usati, round eseguiti, criteri, fonti primarie, conflitti irrisolti.
+- **Dominio-agnostica** (regola anti-overfit): numero di round, fonti primarie, dimensioni di score, criterio di restringimento e livello di anonimizzazione sono parametri fissati nell'inquadramento iniziale, non valori nel codice. `references/funnel_tuning.md` spiega come calibrarli, con tre esempi (incentivi d'impresa, scelta tecnologica/fornitore, due diligence documentale).
+- **`scripts/deep_research.py`** — Interactions API: `create` con `agent_config` + `tools` + `background=True` (senza i primi due il task viene creato e **non parte mai**, senza il terzo l'API rifiuta con 400), consumo SSE, fallback a polling quando lo stream si chiude prima del termine, GET finale sempre necessaria (`interaction.completed` porta solo uno scheletro senza `steps`), estrazione manuale del testo da **tutti** i `model_output` perché l'helper SDK `output_text` tronca il report in presenza di content non testuali. `--tag` deriva JSON/log/response, `--resume-id` recupera un task già pagato quando muore il client, guard su segnaposto `{{...}}` residui e su output preesistente, exit code parlanti (0/1/2/3/4/5).
+- **`scripts/grounded_research.py`** — gamba veloce (reasoning single-shot con `google_search`, 1-3 min) per audit, second-opinion e round mirati su gap; retry solo su errori transitori, mai su 4xx.
+- **`scripts/env_loader.py`** — credenziali senza dipendenze: env di processo > `.env.local` > `.env` > `.env.txt`, cercati risalendo dalla CWD e fermandosi alla prima directory utile; mai un valore in chiaro nei log.
+- **Template di prompt** per i round (esplorazione, shortlist, verticale, mirato) e per l'audit adversarial, con le regole che fanno la differenza: formato parsabile per il round successivo, fonti ammesse e fonti mai valide come prova, obbligo di dichiarare l'incertezza invece di colmarla.
+- **`references/interactions_api.md`** — comportamenti verificati sul campo e tabella di diagnostica dal log (task creato che non parte, stream interrotto, stato `incomplete`/`budget_exceeded`, `citations_count == 0`, cancel via API che risponde 500, floor temporale ~10 min per round).
+- **Blueprint full-auto (`templates/fullauto/`)** — per progetti agentificati: state machine persistente `compose_round<N> → wait_round<N> → … → post-step → done` con run su JSON e scrittura atomica, runner daemon che avanza di **un solo step** per giro, retry per stato, resume al riavvio, notifiche proattive a ogni transizione, CLI ops (`new`/`list`/`status`/`advance`/`cancel`/`serve`); tool di chat `launch_research`/`check_research`; `WIRING.md` con le tre giunture da collegare, i test da fare **senza spendere Deep Research** e la lista di cosa non automatizzare. Principio: in full-auto il gate umano non sparisce, si sposta (notifica + conferma prima di ogni azione irreversibile a valle).
+
+### Dipendenze (solo per la nuova skill)
+- `google-genai>=2.0.0` — obbligatoria: il breaking change "may-2026" ha rimosso lo schema legacy `outputs[]` in favore di `steps[]`; con SDK 1.x l'API risponde *"legacy Interactions API schema is no longer supported"*.
+- `GEMINI_API_KEY` in ambiente o `.env`; opzionali `DEEPRESEARCH_AGENT`, `GROUNDED_MODEL`, `RESEARCH_OUT_DIR` per non hardcodare modelli e path (gli agent Deep Research cambiano nome ogni pochi mesi).
+
+### Changed
+- `plugin.json` / `marketplace.json`: 4.3.1 → 4.4.0, descrizioni e keywords aggiornati, `./skills/deep-research/` nell'array `skills`, count skill 6 → 7.
+- `README.md`: versione corrente, riga della nuova skill, voce in "Novità recenti", struttura del repo, requisiti.
+- CI `validate.yml`: i file della nuova skill tra i required.
+
+---
+
 ## [4.3.1] - 2026-07-11
 
 ### Fixed

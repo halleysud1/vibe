@@ -63,6 +63,18 @@ jobs:
             "skills/agentify/templates/agno/golden_tasks.yaml.template" \
             "skills/agentify/templates/prompts/coding_agent/default.md.template" \
             "skills/agentify/templates/ops/RUNBOOK.md.template" \
+            "skills/deep-research/SKILL.md" \
+            "skills/deep-research/scripts/deep_research.py" \
+            "skills/deep-research/scripts/grounded_research.py" \
+            "skills/deep-research/scripts/env_loader.py" \
+            "skills/deep-research/prompts/round_esplorazione.md" \
+            "skills/deep-research/prompts/round_shortlist.md" \
+            "skills/deep-research/prompts/round_verticale.md" \
+            "skills/deep-research/prompts/audit_second_opinion.md" \
+            "skills/deep-research/references/interactions_api.md" \
+            "skills/deep-research/references/funnel_tuning.md" \
+            "skills/deep-research/templates/fullauto/pipeline.py.template" \
+            "skills/deep-research/templates/fullauto/WIRING.md" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \
