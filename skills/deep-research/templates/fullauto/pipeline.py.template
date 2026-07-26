@@ -1,0 +1,603 @@
+"""Pipeline full-auto di ricerca profonda per {{ project_name }}.
+
+Il ciclo della skill `deep-research` (N round Deep Research a imbuto, validazione
+fonti, cross-check, ranking, sinottico) NON puo' vivere dentro un turno di chat:
+ogni round dura 10-40 minuti. Qui e' una **macchina a stati persistente**.
+
+    compose_round0 → wait_round0 → compose_round1 → wait_round1 → ...
+    → validazione_fonti → audit → ranking → report → done
+    (terminali: done, error, cancelled)
+
+Invarianti da non rompere:
+
+- Ogni run e' un file JSON in `data/pipeline_runs/<run_id>.json`. Lo stato vive su
+  disco, non in memoria: un riavvio non perde nulla.
+- Il runner avanza ogni run non terminale di **un solo step** per giro. Nessun
+  `while` interno che aspetta: gli stati `wait_*` sono idempotenti e si ricontrollano
+  al giro successivo.
+- Il Deep Research parte **detached**: non e' figlio del turno che lo lancia.
+- Ogni transizione notifica proattivamente l'utente. In full-auto il gate umano non
+  sparisce, si sposta: diventa notifica + conferma prima di azioni irreversibili
+  a valle della ricerca.
+- Gli step di sintesi (composizione prompt, validazione, audit, ranking, report)
+  sono delegati all'LLM del progetto via `_llm_call`, che i test monkeypatchano.
+
+Le funzioni `_llm_call` / `_launch_research` / `_notify` sono module-level apposta:
+sono le tre giunture con il mondo esterno e i test le sostituiscono.
+"""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime
+from pathlib import Path
+
+# TODO durante lo scaffolding: allineare a come il progetto ospite risolve la root.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+RUNS_DIR = PROJECT_ROOT / "data" / "pipeline_runs"
+RESEARCH_DIR = PROJECT_ROOT / os.getenv("RESEARCH_OUT_DIR", "data/ricerche")
+
+# Script della skill deep-research (copiati nel progetto o referenziati dal plugin).
+DR_SCRIPT = PROJECT_ROOT / os.getenv(
+    "DEEPRESEARCH_SCRIPT", "skills/deep-research/scripts/deep_research.py")
+
+# Parametri: SEMPRE da env con default. Mai hardcodare modelli o soglie nei sorgenti.
+POLL_SECONDS = int(os.getenv("PIPELINE_POLL_SECONDS", "60"))
+MAX_ROUND_MINUTES = int(os.getenv("PIPELINE_MAX_ROUND_MINUTES", "45"))
+MAX_ATTEMPTS = int(os.getenv("PIPELINE_MAX_ATTEMPTS", "2"))
+LLM_TIMEOUT = int(os.getenv("PIPELINE_LLM_TIMEOUT", "900"))
+
+TERMINAL_STATES = {"done", "error", "cancelled"}
+
+# --------------------------------------------------------------- configurazione
+# TODO durante lo scaffolding: calibrare round e post-step sul dominio.
+# Vedi references/funnel_tuning.md della skill deep-research.
+
+ROUND_SPECS = [
+    {"name": "round0", "label": "round 0 — esplorazione dello scopo"},
+    {"name": "round1", "label": "round 1 — cerchia ristretta"},
+    {"name": "round2", "label": "round 2 — verticale sul candidato piu' probabile"},
+]
+
+# Istruzioni di composizione del prompt di ciascun round, date all'LLM del progetto.
+# Il testo del prompt di ricerca lo scrive l'LLM: qui si descrive COSA deve contenere.
+COMPOSE_INSTRUCTIONS = {
+    "round0": (
+        "Componi il prompt Deep Research per il ROUND 0 (ESPLORAZIONE): mappatura "
+        "ampia di tutti i candidati plausibili per il tema, con domande puntuali, "
+        "formato di output tabellare e riga di sintesi parsabile per candidato, "
+        "fonti primarie da privilegiare e fonti da non usare come prova. "
+        # TODO: elencare qui le fonti primarie del dominio.
+        "Fonti primarie: {{ fonti_primarie }}."
+    ),
+    "round1": (
+        "Leggi il report del round precedente con read_file('{prev_json}') (campo "
+        "response_text). Componi il prompt Deep Research per il ROUND 1 (CERCHIA "
+        "RISTRETTA): seleziona i 3-6 candidati piu' promettenti e chiedi "
+        "approfondimento comparativo su requisiti, compatibilita' incrociata, "
+        "finestre temporali, criticita' applicative. Includi l'istruzione di "
+        "CONFERMARE O SMENTIRE i dati del round precedente, con tabella di esiti."
+    ),
+    "round2": (
+        "Leggi il report del round precedente con read_file('{prev_json}') (campo "
+        "response_text). Componi il prompt Deep Research per il ROUND 2 (VERTICALE): "
+        "scegli il candidato piu' probabile e chiedi il dossier operativo completo — "
+        "base formale letta nel testo, procedura passo a passo, documenti richiesti, "
+        "casi limite applicati al soggetto, calendario, prassi applicativa, errori "
+        "tipici, obblighi successivi, piano B."
+    ),
+}
+
+# Step di sintesi post-funnel. `instruction` e' formattata con: run_id, topic, slug,
+# date, round_json (dict name->path), e gli artifact gia' prodotti.
+POST_STEPS = [
+    {
+        "state": "validazione_fonti",
+        "artifact": "validazione",
+        "instruction": (
+            "Leggi il report finale del funnel con read_file('{last_json}') (campo "
+            "response_text). Estrai TUTTI gli URL citati e verifica i piu' rilevanti "
+            "(max 10) con web_fetch: per ciascuno riporta VALIDO / NON RAGGIUNGIBILE "
+            "/ INCOERENTE col claim. Verifica anche i riferimenti formali citati. "
+            "Output: elenco compatto markdown."
+        ),
+    },
+    {
+        "state": "audit",
+        "artifact": "audit",
+        "instruction": (
+            "Audit critico del funnel {run_id}. Leggi i report ({round_json_list}, "
+            "campo response_text) e l'esito della validazione qui sotto. Chiedi una "
+            "second-opinion a un modello diverso da quello del funnel. Costruisci la "
+            "matrice di accordo (claim chiave × conferma/smentita/non verificabile) "
+            "ricordando che l'arbitro e' la FONTE PRIMARIA, non la maggioranza fra "
+            "modelli. Segnala i red flag.\n\n[VALIDAZIONE]\n{validazione}"
+        ),
+    },
+    {
+        "state": "ranking",
+        "artifact": "ranking",
+        "instruction": (
+            "Ranking multi-dimensione dei candidati del funnel {run_id} (report: "
+            "{round_json_list}). Dimensioni: {{ dimensioni_score }}. "
+            # TODO: allineare le dimensioni a quelle scelte per il dominio.
+            "Penalizza i candidati con conflitti irrisolti nell'audit. Output: "
+            "tabella ordinata per score + raccomandazione secca.\n\n[AUDIT]\n{audit}"
+        ),
+    },
+    {
+        "state": "report",
+        "artifact": "report",
+        "instruction": (
+            "Report sinottico FINALE del funnel {run_id} su '{topic}'. Componi il "
+            "sinottico completo (frontmatter con motori usati, round eseguiti, "
+            "criteri e fonti primarie; sintesi esecutiva; tabella per score; audit "
+            "report con matrice di accordo; schede; prossimi passi; limiti e dati da "
+            "validare) e SALVALO con write_file in "
+            "'ricerche/{slug}/SINOTTICO_{date}.md'. Rispondi con il path salvato e "
+            "una sintesi di max 15 righe per la notifica.\n\n[RANKING]\n{ranking}\n\n"
+            "[AUDIT]\n{audit}"
+        ),
+    },
+]
+
+# ------------------------------------------------------- derivazione degli stati
+
+ROUND_NAMES = [r["name"] for r in ROUND_SPECS]
+ROUND_LABELS = {r["name"]: r["label"] for r in ROUND_SPECS}
+FIRST_POST_STATE = POST_STEPS[0]["state"] if POST_STEPS else "done"
+
+# compose_<round> -> (round_name, wait_state, stato successivo al completamento)
+ROUNDS: dict[str, tuple[str, str, str]] = {}
+for i, name in enumerate(ROUND_NAMES):
+    nxt = f"compose_{ROUND_NAMES[i + 1]}" if i + 1 < len(ROUND_NAMES) else FIRST_POST_STATE
+    ROUNDS[f"compose_{name}"] = (name, f"wait_{name}", nxt)
+
+WAIT_OF = {wait: compose for compose, (_, wait, _) in ROUNDS.items()}
+
+# state -> (next_state, artifact_key, instruction)
+_POST: dict[str, tuple[str, str, str]] = {}
+for i, step in enumerate(POST_STEPS):
+    nxt = POST_STEPS[i + 1]["state"] if i + 1 < len(POST_STEPS) else "done"
+    _POST[step["state"]] = (nxt, step["artifact"], step["instruction"])
+
+INITIAL_STATE = f"compose_{ROUND_NAMES[0]}"
+
+
+# ------------------------------------------------------------------- run store
+
+def _now() -> str:
+    return datetime.now().isoformat(timespec="seconds")
+
+
+def _slug(text: str, maxlen: int = 30) -> str:
+    s = "".join(c if c.isalnum() else "-" for c in text.lower())
+    return re.sub(r"-+", "-", s).strip("-")[:maxlen] or "ricerca"
+
+
+def new_run(topic: str, soggetto: str = "{{ soggetto_default }}",
+            notify_to: str | int | None = None, created_by: str = "") -> dict:
+    """Crea e persiste un nuovo run nello stato iniziale."""
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    base = f"{datetime.now().strftime('%Y%m%d')}_{_slug(topic)}"
+    run_id, n = base, 1
+    while (RUNS_DIR / f"{run_id}.json").exists():
+        n += 1
+        run_id = f"{base}-{n}"
+    run = {
+        "run_id": run_id,
+        "topic": topic,
+        "soggetto": soggetto,
+        "state": INITIAL_STATE,
+        "notify_to": notify_to,
+        "created_by": str(created_by),
+        "attempts": 0,
+        "rounds": {},     # round_name -> {tag, prompt_file, json, log, pid, started_at, ...}
+        "artifacts": {},  # artifact_key -> testo prodotto dallo step
+        "log": [],
+        "error": None,
+        "created_at": _now(),
+        "updated_at": _now(),
+    }
+    _log(run, f"run creato: topic='{topic}', soggetto='{soggetto}'")
+    save_run(run)
+    return run
+
+
+def run_path(run_id: str) -> Path:
+    return RUNS_DIR / f"{run_id}.json"
+
+
+def load_run(run_id: str) -> dict | None:
+    p = run_path(run_id)
+    return json.loads(p.read_text(encoding="utf-8")) if p.exists() else None
+
+
+def save_run(run: dict) -> None:
+    run["updated_at"] = _now()
+    RUNS_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = run_path(run["run_id"]).with_suffix(".tmp")
+    tmp.write_text(json.dumps(run, ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(run_path(run["run_id"]))  # scrittura atomica: mai un JSON mezzo scritto
+
+
+def list_runs(active_only: bool = False) -> list[dict]:
+    if not RUNS_DIR.exists():
+        return []
+    runs = []
+    for p in sorted(RUNS_DIR.glob("*.json")):
+        try:
+            r = json.loads(p.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if active_only and r.get("state") in TERMINAL_STATES:
+            continue
+        runs.append(r)
+    return runs
+
+
+def _log(run: dict, line: str) -> None:
+    run["log"].append(f"[{_now()}] {line}")
+
+
+# ------------------------------------------------------- giunture con l'esterno
+
+def _llm_call(prompt: str, session_id: str, timeout: int = LLM_TIMEOUT) -> tuple[bool, str]:
+    """Delega uno step di sintesi all'LLM/agente del progetto. Ritorna (ok, testo).
+
+    TODO durante lo scaffolding: sostituire con la chiamata reale. Esempio con un
+    AgentOS locale:
+
+        import requests
+        url = os.getenv("AGENTOS_URL", "http://localhost:7777")
+        team = os.getenv("PIPELINE_TEAM_ID", "{{ team_id }}")
+        resp = requests.post(f"{url}/teams/{team}/runs", files={
+            "message": (None, prompt), "stream": (None, "false"),
+            "monitor": (None, "false"), "session_id": (None, session_id)}, timeout=timeout)
+        if resp.status_code != 200:
+            return False, f"HTTP {resp.status_code}: {resp.text[:300]}"
+        return True, resp.json().get("content", "")
+
+    L'agente chiamato deve avere i tool `read_file` / `write_file` / `web_fetch`:
+    gli step di sintesi leggono i JSON dei round dal disco, non ricevono i report
+    nel prompt (sarebbero decine di migliaia di caratteri).
+    """
+    raise NotImplementedError("collega _llm_call all'LLM del progetto")
+
+
+def _launch_research(prompt_file: Path, out_json: Path, log_file: Path) -> int:
+    """Avvia deep_research.py DETACHED e ritorna il pid.
+
+    Detached e' essenziale: il processo deve sopravvivere al turno che lo lancia e
+    a un riavvio del runner.
+    """
+    cmd = [sys.executable, str(DR_SCRIPT),
+           "--prompt-file", str(prompt_file),
+           "--output-json", str(out_json),
+           "--log-file", str(log_file),
+           "--max-wait", str(MAX_ROUND_MINUTES * 60)]
+    agent = os.getenv("DEEPRESEARCH_AGENT")
+    if agent:
+        cmd += ["--agent", agent]
+    detach: dict = {}
+    if sys.platform == "win32":
+        detach["creationflags"] = (subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | subprocess.DETACHED_PROCESS)
+    else:
+        detach["start_new_session"] = True
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+    with open(log_file.with_suffix(".proc.log"), "a", encoding="utf-8") as lf:
+        proc = subprocess.Popen(cmd, cwd=str(PROJECT_ROOT), stdout=lf, stderr=lf, **detach)
+    return proc.pid
+
+
+def _notify(destination: str | int, text: str) -> bool:
+    """Notifica proattiva all'utente.
+
+    TODO durante lo scaffolding: collegare il canale del progetto (Telegram,
+    Slack, email, webhook). Deve funzionare **indipendentemente** dal fatto che un
+    bot in polling sia attivo: la pipeline notifica da sola.
+    Se il progetto non ha un canale di notifica, non e' pronto per il full-auto.
+    """
+    raise NotImplementedError("collega _notify al canale del progetto")
+
+
+def _safe_print(text: str) -> None:
+    """print() a prova di console non-UTF8.
+
+    I messaggi di notifica contengono emoji (vanno bene su Telegram/Slack). Su
+    Windows, se lo stdout del daemon e' rediretto su file, l'encoding diventa
+    quello di locale (cp1252) e un'emoji fa esplodere il runner con
+    UnicodeEncodeError. La notifica non deve MAI poter uccidere la pipeline.
+    """
+    try:
+        print(text)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or "ascii"
+        print(text.encode(enc, "replace").decode(enc, "replace"))
+
+
+def notify(run: dict, text: str) -> None:
+    msg = f"[ricerca {run['run_id']}]\n{text}"
+    _log(run, f"notifica: {text[:120]}")
+    if run.get("notify_to"):
+        try:
+            _notify(run["notify_to"], msg)
+        except Exception as e:  # una notifica fallita non deve fermare la pipeline
+            _log(run, f"notifica fallita: {e}")
+    else:
+        _safe_print(f"[pipeline] {msg}")
+
+
+# --------------------------------------------------------------- state machine
+
+def _round_json(run: dict, name: str) -> str:
+    return run["rounds"].get(name, {}).get("json", "")
+
+
+def _format_instruction(run: dict, template: str) -> str:
+    round_json = {n: _round_json(run, n) for n in ROUND_NAMES}
+    done = [p for p in (round_json[n] for n in ROUND_NAMES) if p]
+    return template.format(
+        run_id=run["run_id"],
+        topic=run["topic"],
+        soggetto=run["soggetto"],
+        slug=_slug(run["topic"]),
+        date=datetime.now().strftime("%Y-%m-%d"),
+        last_json=done[-1] if done else "",
+        round_json_list=", ".join(done),
+        **{f"json_{n}": round_json[n] for n in ROUND_NAMES},
+        **{k: (run["artifacts"].get(k, "") or "")[:8000]
+           for k in (s["artifact"] for s in POST_STEPS)},
+    )
+
+
+def advance(run: dict) -> dict:
+    """Fa avanzare il run di UN passo, se c'e' qualcosa da fare. Salva sempre."""
+    state = run["state"]
+    if state in TERMINAL_STATES:
+        return run
+    try:
+        if state in ROUNDS:
+            _advance_compose(run)
+        elif state in WAIT_OF:
+            _advance_wait(run)
+        elif state in _POST:
+            _advance_post(run)
+        else:
+            _fail(run, f"stato sconosciuto: {state}")
+    except Exception as e:  # un run rotto non deve uccidere il runner
+        _retry_or_fail(run, f"eccezione in {state}: {e}")
+    save_run(run)
+    return run
+
+
+def _advance_compose(run: dict) -> None:
+    round_name, wait_state, _ = ROUNDS[run["state"]]
+    idx = ROUND_NAMES.index(round_name)
+    prev_json = _round_json(run, ROUND_NAMES[idx - 1]) if idx > 0 else ""
+    instruction = (
+        f"[PIPELINE {run['run_id']} — step automatico, NON e' un utente in chat. "
+        f"Rispondi con il SOLO testo del prompt richiesto, senza preamboli.]\n\n"
+        f"Tema: {run['topic']}\nSoggetto: {run['soggetto']}\n\n"
+        + COMPOSE_INSTRUCTIONS[round_name].format(prev_json=prev_json)
+    )
+    ok, prompt_text = _llm_call(instruction, session_id=f"pipeline_{run['run_id']}")
+    # Un prompt di ricerca serio non sta in 200 caratteri: soglia anti-risposta-vuota.
+    if not ok or len(prompt_text.strip()) < 200:
+        _retry_or_fail(run, f"composizione prompt {round_name} fallita: "
+                            f"{(prompt_text or 'risposta vuota')[:200]}")
+        return
+    if "{{" in prompt_text:
+        _retry_or_fail(run, f"prompt {round_name} con segnaposto non sostituiti")
+        return
+
+    RESEARCH_DIR.mkdir(parents=True, exist_ok=True)
+    tag = f"{run['run_id']}_{round_name}"
+    prompt_file = RESEARCH_DIR / f"{tag}_prompt.md"
+    out_json = RESEARCH_DIR / f"{tag}.json"
+    log_file = RESEARCH_DIR / f"{tag}.log"
+    prompt_file.write_text(prompt_text.strip(), encoding="utf-8")
+    pid = _launch_research(prompt_file, out_json, log_file)
+
+    run["rounds"][round_name] = {
+        "tag": tag,
+        "prompt_file": prompt_file.relative_to(PROJECT_ROOT).as_posix(),
+        "json": out_json.relative_to(PROJECT_ROOT).as_posix(),
+        "log": log_file.relative_to(PROJECT_ROOT).as_posix(),
+        "pid": pid,
+        "started_at": _now(),
+    }
+    run["state"], run["attempts"] = wait_state, 0
+    _log(run, f"{round_name} lanciato (pid {pid})")
+    notify(run, f"▶️ {ROUND_LABELS[round_name]}: ricerca avviata "
+                f"(tipicamente 10-40 min). Ti avviso al termine.")
+
+
+def _advance_wait(run: dict) -> None:
+    compose_state = WAIT_OF[run["state"]]
+    round_name, _, next_state = ROUNDS[compose_state]
+    info = run["rounds"].get(round_name)
+    if not info:  # incoerenza di stato: torna a comporre
+        run["state"] = compose_state
+        return
+
+    out_json = PROJECT_ROOT / info["json"]
+    if out_json.exists():
+        try:
+            d = json.loads(out_json.read_text(encoding="utf-8"))
+        except Exception as e:
+            _retry_or_fail(run, f"output {round_name} illeggibile: {e}")
+            return
+        chars = d.get("response_chars", len(d.get("response_text", "")))
+        status = d.get("status", "unknown")
+        info.update({"completed_at": _now(), "chars": chars, "status": status,
+                     "citations": d.get("citations_count")})
+        if status != "completed" or chars == 0:
+            _fail(run, f"{round_name} terminato con status={status} e {chars} "
+                       f"caratteri: intervento umano necessario.")
+            return
+        run["state"], run["attempts"] = next_state, 0
+        _log(run, f"{round_name} completato ({chars} caratteri)")
+        notify(run, f"✅ {ROUND_LABELS[round_name]} completato ({chars} caratteri, "
+                    f"{info.get('citations')} citazioni). Proseguo.")
+        return
+
+    elapsed_min = (datetime.now() - datetime.fromisoformat(info["started_at"])).total_seconds() / 60
+    if elapsed_min > MAX_ROUND_MINUTES:
+        tail = ""
+        log_p = PROJECT_ROOT / info["log"]
+        if log_p.exists():
+            tail = "\n".join(log_p.read_text(encoding="utf-8", errors="replace").splitlines()[-4:])
+        _fail(run, f"{round_name} oltre il tempo massimo ({MAX_ROUND_MINUTES} min). "
+                   f"Il task potrebbe essere ancora vivo: cerca l'interaction_id nel "
+                   f"log e riprendilo con --resume-id.\nUltime righe:\n{tail}")
+    # altrimenti: ancora in corso, si ricontrolla al prossimo giro
+
+
+def _advance_post(run: dict) -> None:
+    next_state, artifact_key, template = _POST[run["state"]]
+    prompt = (f"[PIPELINE {run['run_id']} — step automatico, NON e' un utente in chat.]\n\n"
+              + _format_instruction(run, template))
+    ok, text = _llm_call(prompt, session_id=f"pipeline_{run['run_id']}")
+    if not ok or not text.strip():
+        _retry_or_fail(run, f"step {run['state']} fallito: {(text or '')[:200]}")
+        return
+    run["artifacts"][artifact_key] = text.strip()
+    prev_state = run["state"]
+    run["state"], run["attempts"] = next_state, 0
+    _log(run, f"{prev_state} completato ({len(text)} caratteri)")
+    if next_state == "done":
+        notify(run, f"🏁 Ricerca completata.\n\n{text.strip()[:3000]}")
+    else:
+        notify(run, f"✅ {prev_state} completato. Proseguo con {next_state}.")
+
+
+def _retry_or_fail(run: dict, reason: str) -> None:
+    run["attempts"] = run.get("attempts", 0) + 1
+    _log(run, f"tentativo {run['attempts']}/{MAX_ATTEMPTS} fallito: {reason[:300]}")
+    if run["attempts"] >= MAX_ATTEMPTS:
+        _fail(run, reason)
+
+
+def _fail(run: dict, reason: str) -> None:
+    run["state"], run["error"] = "error", reason[:1000]
+    _log(run, f"ERRORE: {reason[:300]}")
+    notify(run, f"❌ Pipeline in errore: {reason[:500]}\nNessun retry automatico: "
+                f"serve una decisione umana.")
+
+
+def cancel(run_id: str) -> bool:
+    """Marca il run come annullato. NB: un Deep Research gia' lanciato prosegue
+    server-side — l'artefatto verra' semplicemente ignorato."""
+    run = load_run(run_id)
+    if not run or run["state"] in TERMINAL_STATES:
+        return False
+    run["state"] = "cancelled"
+    _log(run, "annullato su richiesta")
+    save_run(run)
+    return True
+
+
+def status_text(run: dict) -> str:
+    lines = [f"run: {run['run_id']}  [{run['state']}]",
+             f"tema: {run['topic']}",
+             f"creato: {run['created_at']}  aggiornato: {run['updated_at']}"]
+    for name in ROUND_NAMES:
+        info = run["rounds"].get(name)
+        if info:
+            when = (f"completato {info.get('completed_at')} ({info.get('chars')} car.)"
+                    if info.get("completed_at") else f"in corso da {info.get('started_at')}")
+            lines.append(f"  {name}: {when} → {info['json']}")
+    for step in POST_STEPS:
+        key = step["artifact"]
+        if key in run.get("artifacts", {}):
+            lines.append(f"  {key}: fatto ({len(run['artifacts'][key])} caratteri)")
+    if run.get("error"):
+        lines.append(f"  errore: {run['error'][:300]}")
+    return "\n".join(lines)
+
+
+# --------------------------------------------------------------------- runner
+
+class PipelineRunner(threading.Thread):
+    """Thread daemon: ogni POLL_SECONDS avanza di un passo tutti i run attivi."""
+
+    def __init__(self, poll_seconds: int = POLL_SECONDS):
+        super().__init__(name="pipeline-runner", daemon=True)
+        self.poll_seconds = poll_seconds
+        self._stop = threading.Event()
+
+    def run(self) -> None:
+        active = list_runs(active_only=True)
+        if active:
+            print(f"[pipeline] resume: {len(active)} run attivi "
+                  f"({', '.join(r['run_id'] for r in active)})")
+        while not self._stop.is_set():
+            for r in list_runs(active_only=True):
+                try:
+                    advance(r)
+                except Exception as e:
+                    print(f"[pipeline] errore su {r.get('run_id')}: {e}")
+            self._stop.wait(self.poll_seconds)
+
+    def stop(self) -> None:
+        self._stop.set()
+
+
+# ------------------------------------------------------------------- CLI ops
+# Utile per far girare la pipeline senza l'agente (debug, cron, primo test).
+
+def _cli(argv: list[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help"):
+        print("uso: pipeline.py new '<tema>' | list | status <run_id> | "
+              "advance <run_id> | cancel <run_id> | serve")
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "new":
+        if not rest:
+            print("serve il tema", file=sys.stderr)
+            return 2
+        print(status_text(new_run(" ".join(rest))))
+        return 0
+    if cmd == "list":
+        for r in list_runs():
+            print(f"{r['run_id']:40s} {r['state']:18s} {r['topic'][:40]}")
+        return 0
+    if cmd in ("status", "advance", "cancel"):
+        if not rest:
+            print("serve il run_id", file=sys.stderr)
+            return 2
+        run = load_run(rest[0])
+        if not run:
+            print(f"run non trovato: {rest[0]}", file=sys.stderr)
+            return 2
+        if cmd == "status":
+            print(status_text(run))
+        elif cmd == "advance":
+            print(status_text(advance(run)))
+        else:
+            print("annullato" if cancel(rest[0]) else "non annullabile")
+        return 0
+    if cmd == "serve":
+        runner = PipelineRunner()
+        runner.start()
+        print(f"[pipeline] runner avviato (poll {POLL_SECONDS}s). Ctrl-C per uscire.")
+        try:
+            while runner.is_alive():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            runner.stop()
+        return 0
+    print(f"comando sconosciuto: {cmd}", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(_cli(sys.argv[1:]))

@@ -1,6 +1,6 @@
 # Vibecoding - SDD toolkit per Claude Code
 
-> Versione corrente: **4.3.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
+> Versione corrente: **4.4.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
 
 Plugin che porta il **vibecoding spec-driven development** in qualunque progetto
 Claude Code. È un repo di **skill** + un comando di bootstrap, non un sistema
@@ -22,11 +22,13 @@ di Claude Code.
 | **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone. Ruoli tool-empowered con harness completo: **coding-agent** (tool edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode) + loop di verifica su definition-of-done, checkpoint/rollback git, **scout** a contesto separato, repo map, eval su golden task), **high-level-ops** (run schedulate) — governati da tool-guard con autonomy gates L0-L5, gate anti-degrado (metriche non-decrescenti, tetto diff, churn detector), audit trail e propose-and-confirm |
 | **Skill `skill-bootstrap`** | Intervista metodologica: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL |
 | **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (pure-python o Chromium hi-fi), con sintesi AI opzionale |
+| **Skill `deep-research`** | Cicli di ricerca profonda a imbuto (esplorazione → cerchia ristretta → verticale) con Google Deep Research come motore: gate umani fra i round, validazione degli URL sulla fonte, cross-check a due gambe con **arbitraggio sulla fonte primaria** (mai a maggioranza fra LLM), scoring multi-dimensione, sinottico auditabile. Include blueprint di state machine per il full-auto in progetti agentificati |
 | **Comando `/vibecoding:init`** | Entry point per bootstrappare un nuovo progetto: chiama `skill-bootstrap` |
 | **Templates** | Scaffold pronti per "modulo software" e "cartella di lavorazione Claude" |
 
 ## Novità recenti (linea 4.x)
 
+- **4.4.0** — nuova skill `deep-research`: funnel a imbuto su Deep Research (task long-running 10-40 min) con gamba grounded veloce per audit e gap; nessun output LLM autoritativo per default (validazione URL sulla fonte, fact-check deterministico, second-opinion adversarial, matrice di accordo arbitrata sulla fonte primaria); blueprint full-auto con state machine persistente, resume e notifiche proattive
 - **4.3.0** — orientamento decisionale del coding-agent: tool `project_context` (storia decisionale in una chiamata, obbligatorio prima di editare) + `log_decision` (chiusura del loop sul journal), plausibilità del risultato oltre ai test, anti-pattern A13 "context-blindness"; fix AFC nascosto su Gemini + RBAC multi-utente
 - **4.2.0** — gate anti-degrado del coding-agent: metriche non-decrescenti in `verify` (baseline persistita), tetto ai diff proposti, churn detector, revisione OUTBOX anti rubber-stamping
 - **4.1.0** — harness del coding-agent: loop di verifica su definition-of-done, `gitops` (checkpoint/rollback su branch `agent/*`, diff reale in OUTBOX), ruolo `scout`, `repo_map`, `eval_coder` con golden task
@@ -130,10 +132,16 @@ vibe/
 │   │       ├── prompts/            # varianti system prompt coding-agent (harvest opencode)
 │   │       └── ops/                # RUNBOOK, TASK_QUEUE, OUTBOX, AUDIT, ops-run.ps1/.sh
 │   ├── skill-bootstrap/SKILL.md
-│   └── md-to-pdf/
-│       ├── SKILL.md
-│       ├── scripts/
-│       └── styles/
+│   ├── md-to-pdf/
+│   │   ├── SKILL.md
+│   │   ├── scripts/
+│   │   └── styles/
+│   └── deep-research/
+│       ├── SKILL.md                 # protocollo del funnel con gate umani
+│       ├── scripts/                 # deep_research.py, grounded_research.py, env_loader.py
+│       ├── prompts/                 # template dei round + audit adversarial
+│       ├── references/              # Interactions API verificata, calibrazione del funnel
+│       └── templates/fullauto/      # state machine, tool di chat, WIRING.md
 ├── templates/
 │   ├── modulo/                      # scaffold "modulo software"
 │   ├── cartella/                    # scaffold "cartella di lavorazione"
@@ -181,6 +189,7 @@ Vedi `docs/MIGRATION_2.1_to_3.0.md` per chi aveva v2.1 installato.
 
 - Claude Code CLI o Desktop App (versione 2026 con Skills + Subagents nativi)
 - Per `agentify`: Python 3.10+ con `agno`, `pyyaml`, `python-dotenv` se usi il default Agno
+- Per `deep-research`: Python 3.10+ con `google-genai>=2.0.0` e `GEMINI_API_KEY` in ambiente o `.env`
 
 ---
 
