@@ -68,6 +68,7 @@ jobs:
             "skills/deep-research/scripts/grounded_research.py" \
             "skills/deep-research/scripts/env_loader.py" \
             "skills/deep-research/prompts/round_esplorazione.md" \
+            "skills/deep-research/prompts/round_dubbi.md" \
             "skills/deep-research/prompts/round_shortlist.md" \
             "skills/deep-research/prompts/round_verticale.md" \
             "skills/deep-research/prompts/audit_second_opinion.md" \

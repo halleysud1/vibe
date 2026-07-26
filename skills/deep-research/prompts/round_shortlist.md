@@ -1,8 +1,18 @@
-# Template — Round 1: cerchia ristretta
+# Template — Stadio 2: round di dubbi in forma comparativa
 
-Obiettivo del round: **approfondire e verificare** i candidati selezionati dal
-round 0, non trovarne di nuovi. Questo round fa anche da **verifica incrociata**
-del precedente: gli si chiede esplicitamente di smentirlo.
+Variante di `round_dubbi.md` per il caso in cui il dubbio strutturale aperto dal
+controllo è **comparativo**: non "questo dato è vero?" ma "**quale fra questi
+candidati è quello giusto per questo soggetto?**". È un dubbio a tutti gli effetti —
+finché resta aperto non si può stringere sul verticale, perché si rischia di
+approfondire il candidato sbagliato.
+
+Obiettivo del round: **approfondire e verificare** i candidati rimasti in piedi dopo
+il round di inquadramento, non trovarne di nuovi. Questo round fa anche da
+**verifica incrociata** del precedente: gli si chiede esplicitamente di smentirlo.
+
+Se accanto al dubbio comparativo ci sono anche dubbi fattuali, aggiungili come
+blocco usando la struttura di `round_dubbi.md`: un round può chiudere entrambi i
+tipi, e ne risparmi uno.
 
 Sostituisci tutti i `{{...}}`.
 

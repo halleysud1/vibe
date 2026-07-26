@@ -1,5 +1,37 @@
 # Changelog
 
+## [4.5.0] - 2026-07-26
+
+### Changed — `deep-research`: il funnel diventa ricorsivo
+
+La 4.4.0 portava avanti i dubbi emersi dal controllo marcandoli "da validare" mentre l'imbuto si stringeva. È il modo tipico di scoprire l'errore **dopo** aver speso il round più profondo: se la premessa era sbagliata, il verticale è da rifare e il funnel intero è denaro buttato. Ora i dubbi si chiudono prima.
+
+**Nuovo invariante (regola non negoziabile n. 8): non si stringe l'imbuto su un dubbio aperto.**
+
+- **Tre stadi tendenziali invece di tre round fissi**: inquadramento del problema → chiusura dei dubbi → focalizzazione verticale. Lo stadio dei dubbi si **ripete per ricorsione** finché i dubbi strutturali sono chiusi, e il funnel può anche accorciarsi (se il controllo sul primo round non trova dubbi strutturali si va diretti al verticale, dichiarandolo).
+- **Controllo (Fase 4) e confronto (Fase 5) girano dopo ogni round**, non solo alla fine: sono loro a produrre i dubbi che alimentano lo stadio successivo. Le due fasi prendono il nome che hanno nell'uso reale.
+- **Classificazione dei dubbi**, ciò che rende la ricorsione sostenibile invece di infinita: **strutturale** (se si risolve male cambia la selezione o invalida il perimetro → merita un round), **puntuale** (un dato isolato → gamba veloce o `WebFetch`, mai un round da 30 minuti), **irriducibile** (fonte pubblica non conclusiva → si dichiara e si marca). Nel dubbio sulla classe si tratta come strutturale: l'errore è asimmetrico.
+- **Il dubbio è una proposizione falsificabile**, non un'impressione: "la fonte non è chiara" non apre un round, "lo strumento X richiede la sede in regione e il soggetto non l'ha" sì.
+- **La domanda di premessa è obbligatoria in ogni round di dubbi**: *il perimetro dell'analisi è ancora quello giusto?* L'errore costoso non sta quasi mai in un dato, sta nell'inquadramento.
+- **Limite di ricorsione dichiarato in Fase 1**, non deciso strada facendo (default 2, cioè fino a 4 round). A limite esaurito con dubbi ancora aperti il funnel **si ferma e chiede**: concedere un altro round, procedere accettando il rischio (tracciato con `stretto_su_dubbi_aperti: true`), o chiudere con un sinottico parziale.
+- **Registro dei dubbi** (`DUBBI.md`) e **traccia della ricorsione** nel sinottico: un dubbio per riga con classe, round che l'ha aperto, esito e fonte. Nuovi campi nel frontmatter (`round_eseguiti`, `n_round_dubbi`, `limite_ricorsione`, `n_dubbi_aperti`, `stretto_su_dubbi_aperti`); se restano dubbi aperti la sintesi esecutiva **si apre da lì**, prima di qualunque raccomandazione.
+- **Nuovo template `prompts/round_dubbi.md`** (verdetto CONFERMATO/SMENTITO/NON CONCLUSIVO con prova puntuale, conseguenza sulla selezione, effetti collaterali, domanda di premessa; "NON CONCLUSIVO è preferibile a una risposta plausibile"). `round_shortlist.md` è riformulato come la variante comparativa dello stesso stadio ("quale fra questi", che è anch'esso un dubbio bloccante).
+- **Nomi degli artefatti parlanti**: `r1-inquadramento`, `r2-dubbi1`, `r2-dubbi2`, `r3-focus` — la forma del funnel si legge da un `ls`.
+- **`references/funnel_tuning.md`**: non si configura più il numero di round ma il limite di ricorsione (tabella 0/1/2/3+ con i casi d'uso), più cosa conta come dubbio strutturale per dominio (normativo, tecnico, due diligence). Il criterio: se l'esito sfavorevole cambia *chi vince* è strutturale, se cambia *di quanto* è puntuale.
+
+### Changed — blueprint full-auto riscritto per la ricorsione
+
+- **Stati generici e stadi dinamici**: `compose → wait → controllo → confronto → cancello`, con `run["stage"]` che porta lo stadio corrente. La catena fissa `round0 → round1 → round2` non poteva esprimere un ciclo.
+- **Il modello classifica, il codice decide**: il cancello chiede all'LLM un JSON con i dubbi classificati, ma il *routing* è una politica deterministica in Python. Un giudizio sbagliato costa un round; un controllo di flusso in mano al modello costa il funnel.
+- **Nuovo stato `attesa_decisione`**, non terminale e che il runner **non tocca**: ci si finisce a budget esaurito con dubbi aperti, oppure quando il cancello non restituisce un JSON leggibile (il fallback è sempre verso l'umano, mai verso "vai avanti"). Si esce con la nuova `decide(run_id, "altro-round"|"procedi"|"chiudi")`, esposta anche come comando CLI.
+- **I dubbi non evaporano**: il registro si fonde per enunciato normalizzato e un dubbio assente da un cancello successivo conserva l'esito precedente.
+- `PIPELINE_MAX_DOUBT_ROUNDS` (default 2) fra le env; `WIRING.md` aggiornato con i nuovi stati, il comando `decide` obbligatorio, i test della ricorsione e il divieto di automatizzare la decisione di stringere su dubbi aperti.
+
+### Validazione
+State machine ricorsiva provata end-to-end con le giunture finte: percorso senza dubbi (2 round), ricorsione con dubbio aperto e poi chiuso (3 round), limite esaurito → `attesa_decisione` con verifica che il runner non modifichi il run, le tre decisioni umane, cancello con JSON illeggibile → attesa umana, persistenza del registro dubbi con match normalizzato, round `incomplete` → errore, timeout round → errore, estrazione JSON da fence/inline/assente.
+
+---
+
 ## [4.4.0] - 2026-07-26
 
 ### Added — nuova skill `deep-research`: cicli di ricerca profonda a imbuto
