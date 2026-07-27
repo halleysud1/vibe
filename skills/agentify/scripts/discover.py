@@ -15,9 +15,9 @@ claude-session-supervisor (rimossa in vibecoding 4.0.0).
 
 Output: JSON stampato a stdout (anche salvato in ./.agentify_discovery.json se --save).
 
-Usage:
-    python .claude/skills/agentify/scripts/discover.py
-    python .claude/skills/agentify/scripts/discover.py --root /path/to/project --save
+Usage (lo script vive nel plugin, il progetto analizzato e' la CWD o --root):
+    python "$CLAUDE_PLUGIN_ROOT/skills/agentify/scripts/discover.py"
+    python "$CLAUDE_PLUGIN_ROOT/skills/agentify/scripts/discover.py" --root /path/to/project --save
 """
 
 from __future__ import annotations

@@ -33,6 +33,23 @@ dell'utente, decide *dove* va ciascuna informazione e la scrive nel posto giusto
 
 ---
 
+## Fase 0 — Detect del contesto esistente
+
+Prima di intervistare, guarda cosa c'è già nella root: `CLAUDE.md`,
+`PROJECT_SPEC.md`, `PLAN.md`, `docs/README.md`, `.claude/skills/`.
+
+| Stato rilevato | Cosa fare |
+|---|---|
+| Tutto assente | Intervista completa, dalla Fase A |
+| C'è `PROJECT_SPEC.md`, nient'altro | Leggilo, riusa il contenuto, salta le domande L1 |
+| C'è `CLAUDE.md`, non `PROJECT_SPEC.md` | Riusa CLAUDE.md per L2, fai L1 e il routing delle skill |
+| Ci sono entrambi + skill | **Non rifare il bootstrap**: suggerisci `/change-request` per evolvere, o aggiungi solo le skill mancanti |
+
+Se l'utente ha preparato un `PROJECT_SPEC.md` prima di chiamarti, è un segnale
+che vuole un flusso rapido: riusa quel contenuto e fai solo le domande mancanti.
+
+---
+
 ## Fase A — Tipo di lavorazione
 
 La prima domanda discrimina lo scaffold e quali skill ha senso scrivere.
@@ -183,6 +200,10 @@ Apri il template e riempi:
 - `# Requisiti funzionali` (RF-NN, numerati)
 - `# Glossario di dominio` (se l'utente ha usato termini tecnici specifici)
 
+Applica il **test anti-overfit** a ogni requisito: l'esempio concreto dell'utente
+diventa un *default configurabile*, non un valore hardcoded. Vedi la skill
+`methodology` § Anti-overfit.
+
 ### D4. Scrivi le SKILL operative (writer di SKILL.md)
 
 Per ogni skill identificata in Fase C:
@@ -203,11 +224,30 @@ Per ogni skill identificata in Fase C:
 Per i progetti modulo, abbozza un PLAN.md con i task iniziali derivati dai RF di
 PROJECT_SPEC. Stato `⬜` per tutti, l'utente promuoverà manualmente a `🔄`.
 
-### D6. Verifica finale
+### D6. (solo modulo, opzionale) Strategia di validazione
+
+Determina il tipo di applicazione e scrivi `docs/VALIDATION_STRATEGY.md`
+scegliendo gli scenari dalla skill `validation-strategies`.
+
+### D7. Verifica finale e chiusura
+
+Verifica:
 
 - Tutti i file generati si leggono come documenti coerenti?
 - Le skill sono auto-contenute (non serve leggere CLAUDE.md per capirle)?
 - CLAUDE.md non duplica info che dovrebbero stare nelle skill?
+
+Poi consegna:
+
+1. **Sintesi degli artefatti** — lista dei file con path
+2. **Conferma del routing** — quale regola è finita dove
+3. **Open questions** — assunzioni non confermate, se ce ne sono
+
+Infine lascia traccia per la prossima sessione:
+
+- entry in `decisions.log` (se esiste o se ha senso crearlo): data, tipo di
+  lavorazione, skill scritte, vincoli L2 chiave
+- una **project memory** (auto-memory) con tipo progetto, stack/vincoli, skill attive
 
 ---
 
@@ -280,11 +320,12 @@ Dopo OK → Fase D scrive i 3 file.
 
 Prima di chiudere:
 
-1. Ho fatto Fase A (modulo vs cartella) prima di scegliere il template?
+1. Ho fatto Fase 0 (detect) e Fase A (modulo vs cartella) prima di scegliere il template?
 2. Ho mostrato la classificazione di Fase C all'utente e ottenuto approvazione?
-3. Ogni skill ha `description` actionable (verbo + trigger)?
+3. Ogni skill ha `description` actionable (verbo + oggetto + trigger)?
 4. CLAUDE.md non duplica regole che ho messo nelle skill?
 5. Ho scritto solo le regole dette dall'utente, niente invenzioni?
 6. La struttura segue il template (modulo o cartella) coerentemente?
+7. Ho applicato l'anti-overfit ai requisiti numerici e chiuso con `decisions.log` + memory (D7)?
 
 Se anche solo una risposta è "no", torna indietro e correggi prima di chiudere.

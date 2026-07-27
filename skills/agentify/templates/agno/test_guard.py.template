@@ -2,7 +2,9 @@
 
 Derivati da test_supervisor.py dell'ex skill claude-session-supervisor.
 Coprono: allow, denylist baseline (path sensibili, comandi distruttivi),
-permessi a pattern, propose->OUTBOX, kill-switch, lock anti-concorrenza.
+permessi a pattern, propose->OUTBOX, kill-switch (+ grazia per diagnosi e
+rollback), churn detector (+ reset sul progresso verificato), lock
+anti-concorrenza.
 """
 import os
 
@@ -62,16 +64,44 @@ def test_audit_written(guard):
     assert "tool=read" in audit and "decision=ALLOW" in audit
 
 
-def test_kill_switch(guard):
+def test_kill_switch_blocks_writes(guard, monkeypatch):
+    monkeypatch.setitem(guard_mod.PERMISSIONS, "edit", "allow")
     for _ in range(5):
         guard.gate("read", {"file_path": "README.md"})
     with pytest.raises(GuardDenied, match="kill-switch"):
+        guard.gate("edit", {"file_path": "src/x.py"})
+
+
+def test_kill_switch_grace_allows_diagnosis_and_rollback(guard, monkeypatch):
+    """Il kill-switch non deve tagliare il paracadute: oltre il limite restano
+    possibili diagnosi e rollback, per un budget limitato."""
+    monkeypatch.setattr(guard_mod, "RECOVERY_GRACE", 2)
+    for _ in range(5):
         guard.gate("read", {"file_path": "README.md"})
+    assert guard.gate("gitops", {"summary": "revert to checkpoint"}) is None
+    assert guard.gate("verify", {"summary": "all"}) is None
+    with pytest.raises(GuardDenied, match="kill-switch"):
+        guard.gate("gitops", {"summary": "revert to checkpoint"})
 
 
 def test_churn_detector(guard, monkeypatch):
     monkeypatch.setattr(guard_mod, "CHURN_LIMIT", 3)
     monkeypatch.setitem(guard_mod.PERMISSIONS, "edit", "allow")
+    for _ in range(3):
+        guard.gate("edit", {"file_path": "src/x.py"})
+    with pytest.raises(GuardDenied, match="thrashing"):
+        guard.gate("edit", {"file_path": "src/x.py"})
+
+
+def test_churn_resets_on_verified_progress(guard, monkeypatch):
+    """Molti edit ciascuno verificato sono iterazione, non thrashing: un
+    verify() VERDE (mark_progress) azzera il contatore."""
+    monkeypatch.setattr(guard_mod, "CHURN_LIMIT", 3)
+    monkeypatch.setattr(guard_mod, "KILL_SWITCH_LIMIT", 100)
+    monkeypatch.setitem(guard_mod.PERMISSIONS, "edit", "allow")
+    for _ in range(3):
+        guard.gate("edit", {"file_path": "src/x.py"})
+    guard.mark_progress("verify VERDE (all)")
     for _ in range(3):
         guard.gate("edit", {"file_path": "src/x.py"})
     with pytest.raises(GuardDenied, match="thrashing"):

@@ -22,7 +22,9 @@ Apri una issue con tag `enhancement` descrivendo:
 1. Forka il repository
 2. Crea un branch: `git checkout -b feature/nome-feature`
 3. Fai le modifiche
-4. Verifica che la CI passi (JSON validi, frontmatter corretti, file presenti)
+4. Verifica che la CI passi: JSON validi, frontmatter corretti, file presenti,
+   script che compilano, invocazioni via `${CLAUDE_PLUGIN_ROOT}`, nessun
+   segnaposto in prosa nei prompt dei ruoli, description entro 600 caratteri
 5. Committa: `git commit -m "feat: descrizione"`
 6. Pusha: `git push origin feature/nome-feature`
 7. Apri una Pull Request
@@ -46,12 +48,11 @@ Formato: `tipo: descrizione`
 commands/           → Comandi slash (solo /vibecoding:init)
 skills/             → Skill in cartelle dedicate (skills/<nome>/SKILL.md)
 templates/          → Template copiati nei progetti utente
-docs/               → Documentazione del plugin (es. migration guide)
+docs/               → Documentazione del plugin
 ```
 
-> **Nota**: in v3.0 sono stati rimossi `agents/`, `hooks/`, `scripts/` (a livello plugin)
-> perché coperti nativamente da Claude Code. Vedi `CHANGELOG.md` 3.0.0 e
-> `docs/MIGRATION_2.1_to_3.0.md`.
+> Il plugin non spedisce `agents/` né `hooks/`: sono coperti nativamente da
+> Claude Code. Quello che spedisce è il metodo.
 
 ### Aggiungere una skill
 
@@ -80,8 +81,26 @@ Vedi `skills/agentify/` come esempio.
 
 ### Modificare `/vibecoding:init`
 
-`commands/init.md` è il punto di ingresso. La logica di routing 3-vie è codificata
-nella skill `skill-bootstrap`: se modifichi il flusso, sincronizza entrambi.
+`commands/init.md` è un **entry point sottile**: invoca `skill-bootstrap` e non
+altro. Tutto il protocollo (detect, intervista, routing 3-vie, scrittura,
+chiusura) vive nella skill, che è la fonte autoritativa.
+
+Non reintrodurre il protocollo nel comando "per comodità": due copie che
+divergono producono bootstrap diversi per lo stesso progetto, ed è esattamente
+il parallel flow che questo toolkit insegna a non fare.
+
+### Invocare script dalle skill
+
+Sempre via `${CLAUDE_PLUGIN_ROOT}`:
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/skills/<nome>/scripts/helper.py"
+```
+
+Un path relativo tipo `skills/<nome>/scripts/helper.py` funziona solo se la
+skill è copiata dentro il progetto: installata da marketplace la skill vive
+nella directory del plugin, il comando fallisce al primo uso e il modello
+finisce a improvvisare. La CI lo verifica.
 
 ## Code of Conduct
 

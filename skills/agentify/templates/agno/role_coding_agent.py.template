@@ -12,20 +12,30 @@ from agent._models import resolve_model
 from agent.tools import CODING_AGENT_TOOLS
 
 # Renderizzato dallo scaffolding: contenuto di prompts/coding_agent/<variante>.md
-# con {{ identity.name }}, {{ identity.description }}, {{ boundaries }} sostituiti.
+# con {{ identity.name }}, {{ identity.description }}, {{ boundaries }} sostituiti,
+# scritto come UN file in agent/prompts/coding_agent.md.
 # Varianti disponibili: anthropic | gemini | gpt | default (+ plan come reminder
 # aggiuntivo quando il ruolo opera in modalita' read-only).
-CODING_AGENT_PROMPT = (
-    Path(__file__).resolve().parent.parent / "prompts" / "coding_agent.md"
-).read_text(encoding="utf-8")
+_PROMPT_FILE = Path(__file__).resolve().parent.parent / "prompts" / "coding_agent.md"
+if not _PROMPT_FILE.exists():
+    raise FileNotFoundError(
+        f"System prompt del coding-agent mancante: {_PROMPT_FILE}\n"
+        "Lo scaffolding deve renderizzare la variante scelta in Fase 3 "
+        "(templates/prompts/coding_agent/<anthropic|gemini|gpt|default>.md.template) "
+        "in QUESTO singolo file. Senza, il ruolo girerebbe senza identita'."
+    )
+CODING_AGENT_PROMPT = _PROMPT_FILE.read_text(encoding="utf-8")
 
 CODING_AGENT_INSTRUCTIONS = """
 ## Ruolo: Coding Agent
 
 ### Compito
-# TODO durante scaffolding: descrivere il perimetro di codice su cui il ruolo
-# opera (moduli, path), il tipo di intervento atteso (bugfix, refactor,
-# manutenzione, feature), il criterio di completamento (test verdi, lint pulito).
+{{ role_perimeter }}
+<!-- role_perimeter DEVE dichiarare: il perimetro di codice su cui il ruolo opera
+     (moduli, path), il tipo di intervento atteso (bugfix, refactor, manutenzione,
+     feature), il criterio di completamento (test verdi, lint pulito).
+     Non lasciarlo generico: e' l'unico confine di scope che il modello legge. -->
+
 
 ### Ciclo di lavoro (NON opzionale)
 1. **Orienta**: PRIMA di toccare qualsiasi file chiama
@@ -71,10 +81,15 @@ usano Z?) delega allo Scout invece di leggere tu decine di file. Regole:
   read/grep: e' piu' veloce della delega.
 
 ### Vincoli
-- Le azioni edit/write/apply_patch/shell passano dal tool-guard: una DENY va
-  rispettata (approccio alternativo), una PROPOSE va lasciata in OUTBOX e
-  segnalata nel report finale.
+- Le azioni passano dal tool-guard: una DENY va rispettata (cerca un approccio
+  alternativo), una PROPOSE va lasciata in OUTBOX e segnalata nel report finale.
+- Puoi editare liberamente **dentro il tuo branch**: il contenimento e'
+  strutturale, non un permesso. Il gate umano e' sul diff finale, non sulla
+  singola modifica — per questo `git_propose_diff` non e' opzionale.
 - Mai push, mai merge, mai toccare main/master: lavori solo su branch agent/*.
+- Se il guard nega per `thrashing` o kill-switch, NON cercare aggiramenti:
+  fermati, `git_revert_to_checkpoint()` e riporta. La grazia post kill-switch
+  esiste esattamente per farti chiudere in ordine.
 {{ vincoli_specifici_ruolo }}
 """
 

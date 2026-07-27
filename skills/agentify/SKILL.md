@@ -1,6 +1,6 @@
 ---
 name: agentify
-description: "Protocollo portabile per trasformare un progetto Claude Code (con skill SKILL.md, MCP server, scripts) in un agente standalone specializzato. 6 fasi — Discovery → Identity Interview → Engine Selection → Roles & Models → Tool Layer & Autonomy → Scaffolding → Validation. Engine-agnostic (Agno+AgentOS default). Include ruoli tool-empowered: coding-agent con harness completo (tool editing/shell/LSP derivati da opencode + loop di verifica su definition-of-done, checkpoint/rollback git, scout a contesto separato, repo map, eval su golden task), high-level-ops schedulato con autonomy gates L0-L5, tool-guard, runbook, audit trail, propose-and-confirm."
+description: "Trasforma un progetto Claude Code (skill, MCP server, scripts) in un agente standalone specializzato: discovery, intervista d'identita', scelta engine (Agno+AgentOS di default), ruoli multi-modello, tool layer con autonomy gates L0-L5 e tool-guard, scaffolding, validazione. Include il ruolo coding-agent con harness completo — verify loop sulla definition-of-done, checkpoint/rollback git, scout a contesto separato, eval su golden task. Usala quando l'agente deve girare SENZA Claude Code: utenti terzi, servizio always-on, multi-modello per costo."
 ---
 
 # /agentify — Trasforma un progetto Claude Code in agente standalone
@@ -62,8 +62,12 @@ suggerisci le routine native: è il consiglio onesto.
 Capisci il progetto. Esegui lo script automatizzato:
 
 ```bash
-python .claude/skills/agentify/scripts/discover.py --save
+python "${CLAUDE_PLUGIN_ROOT}/skills/agentify/scripts/discover.py" --save
 ```
+
+`CLAUDE_PLUGIN_ROOT` è la root del plugin installato: gli script e i template
+vivono lì, non nel progetto target. Se la variabile non è definita (skill copiata
+a mano dentro un progetto) ripiega su `.claude/skills/agentify/`.
 
 Output: `.agentify_discovery.json` nella root del progetto. Contiene:
 - `skills`: lista skill (name, description, body length)
@@ -252,9 +256,19 @@ silenzio. Contromisure strutturali:
 
 1. **Quality gates nella definition-of-done**: lint come check `required` (non
    informativo) e almeno una **metrica non-decrescente** (`"metric":
-   "non_decreasing"`, es. coverage) — baseline persistita in
+   "non_decreasing"` + `"metric_pattern"`, es. coverage) — baseline persistita in
    `docs/ops/.metrics.json`; se la metrica scende il check fallisce anche con
    exit code 0. Valuta anche un budget di complessità (es. `radon`/`xenon`).
+   Due condizioni perché il gate esista davvero:
+   - **niente pipe POSIX nei comandi** (`| tail`, `| head`, `| grep`): con
+     `shell=True` su Windows il check fallisce sempre e, se è `required: false`,
+     fallisce *in silenzio* — un gate inerte è peggio di nessun gate, perché ti
+     credi coperto. Estrai il numero con `metric_pattern`, non con la pipe;
+   - **`metric_pattern` obbligatorio**, regex con un gruppo di cattura. "L'ultimo
+     numero dell'output" può essere il tempo di esecuzione dei test: la baseline
+     si fissa su quello e da lì qualunque valore la supera.
+   Il check con metrica va dichiarato `required: true`. Se il progetto non ha
+   coverage, **rimuovi** il check invece di degradarlo a informativo.
 2. **Tetto ai diff proposti** (`max_propose_diff_lines`, default 400): un diff
    irrevisionabile verrebbe approvato senza lettura — oltre soglia
    `git_propose_diff` rifiuta e impone batch più piccoli.
@@ -302,11 +316,9 @@ tools:
     glob: allow
     grep: allow
     lsp: allow
-    edit: propose        # allow | propose | deny  (propose = propose-and-confirm via OUTBOX)
-    write:
-      "reports/**": allow
-      "*": propose
-    apply_patch: propose
+    edit: allow          # allow | propose | deny  (propose = propose-and-confirm via OUTBOX)
+    write: allow
+    apply_patch: allow
     shell:
       "git status": allow
       "pytest*": allow
@@ -318,14 +330,40 @@ tools:
 
 (`ask` di opencode diventa `propose` nel contesto unattended: la richiesta di approvazione è asincrona via OUTBOX, non un prompt bloccante.)
 
+### A che livello mettere il propose-and-confirm (non sulla singola call)
+
+Per il **coding-agent** `edit`/`write`/`apply_patch` sono `allow` anche unattended,
+e il gate umano sta **sul diff**, non sulla singola tool call. Le ragioni sono due,
+entrambe verificate:
+
+1. **Con `edit: propose` il ciclo non può chiudersi.** Una `propose` non viene
+   eseguita: nessun edit atterra, `verify()` restituisce sempre lo stesso rosso, e
+   il ruolo ri-propone finché non incontra churn o kill-switch. Il ciclo
+   `edita → verifica → itera fino a verde` che la skill dichiara obbligatorio
+   diventa strutturalmente impossibile.
+2. **Una call accodata non è revisionabile.** In OUTBOX finisce il payload della
+   chiamata troncato: chi approva non vede il codice risultante e non può
+   applicarlo. `git_propose_diff` scrive invece il **diff reale**, con tetto a
+   `max_propose_diff_lines`: quello si rivede.
+
+Il contenimento del coder non viene dal permesso ma dalla **struttura**: lavora
+solo su branch `agent/*`, non può fare push né merge, ogni batch è reversibile col
+checkpoint, i path sensibili restano negati dalla baseline, kill-switch e churn
+limitano la deriva. Chi decide se quel lavoro entra in main è l'umano che legge il
+diff in OUTBOX.
+
+Per i ruoli **non isolati su branch** (es. `high-level-ops`, che scrive report nel
+worktree vivo) vale l'opposto: `write` ristretto alla sola output dir, `"*": propose`.
+
 ### Tool-guard (erede dell'ex claude-session-supervisor)
 
 Layer di enforcement attorno all'esecuzione di ogni tool call dei ruoli tool-empowered, in ordine di costo:
 
-1. **Kill-switch**: counter di tool call per run; oltre `kill_switch_limit` (default 200) → DENY hard + emergency log. Rete di sicurezza contro loop runaway.
+1. **Kill-switch**: counter di tool call per run; oltre `kill_switch_limit` (default 200) → DENY + emergency log. Rete di sicurezza contro loop runaway. **Con budget di grazia** (`recovery_grace`, default 20) sui soli tool di diagnosi e rollback (`read`, `glob`, `grep`, `repomap`, `context`, `verify`, `gitops`): un kill-switch che nega anche `git_revert_to_checkpoint` taglia il paracadute — lascia il worktree mezzo editato e nessun modo di ripararlo. Nessuno dei tool in grazia scrive codice.
 2. **Denylist statica**: baseline sempre presente (path sensibili da discovery: `.env*`, segreti; comandi distruttivi: `rm`, `git push`, delete massivi) + `PROJECT_DENYLIST` estendibile dall'utente.
-3. **Allowlist statica**: le strade autorizzate della mission (path/pattern noti). Deve coprire l'80-90% dei tool call attesi.
-4. **Propose-and-confirm**: ciò che non è né deny né allow e ha permesso `propose` → scritto in `OUTBOX.md` come proposta, non eseguito. Un umano (o un run successivo dopo conferma) la applica.
+3. **Churn detector**: edit ripetuti sullo stesso file **senza un `verify()` VERDE in mezzo**. Il contatore si azzera a ogni verde (`GUARD.mark_progress()`): molti edit ciascuno verificato sono iterazione legittima, non thrashing. Senza il reset il detector colpirebbe proprio il file caldo del task — cioè il lavoro buono — e negherebbe l'edit necessario a riparare un verify rosso.
+4. **Allowlist statica**: le strade autorizzate della mission (path/pattern noti). Deve coprire l'80-90% dei tool call attesi.
+5. **Propose-and-confirm**: ciò che non è né deny né allow e ha permesso `propose` → scritto in `OUTBOX.md` come proposta, non eseguito. Un umano (o un run successivo dopo conferma) la applica. Per le modifiche al codice il livello giusto è il **diff** (`git_propose_diff`), non la singola call.
 
 Più: **audit trail append-only** (`AUDIT.md`: ogni decisione con timestamp, tool, regola che ha deciso), **lock anti-concorrenza** (due run schedulate non si sovrappongono), **UTF-8 forzato** su Windows.
 
@@ -404,7 +442,7 @@ audit_log/proposals/              # solo se propose-and-confirm
 
 ### Come renderizzare i template
 
-I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja2-style con i valori dal manifesto:
+I template sono in `${CLAUDE_PLUGIN_ROOT}/skills/agentify/templates/`. Hanno placeholder Jinja2-style con i valori dal manifesto:
 - `{{ identity.name }}`
 - `{{ models.roles.orchestrator.default }}`
 - `{% for skill in skills.imported %}{{ skill }}{% endfor %}`
@@ -520,7 +558,11 @@ Verifica deterministica del tool-guard:
 - tool call su path allowlisted → eseguito
 - tool call su denylist (path sensibile, comando distruttivo) → DENY + audit entry
 - tool call `propose` → NON eseguito, proposta in `OUTBOX.md`
-- superamento `kill_switch_limit` → DENY hard di tutto
+- superamento `kill_switch_limit` → DENY delle scritture, ma diagnosi e
+  `git_revert_to_checkpoint` restano possibili entro `recovery_grace`; esaurita
+  la grazia, DENY di tutto
+- `churn_limit` edit sullo stesso file senza verde → DENY `thrashing`; dopo un
+  `verify()` VERDE il contatore riparte da zero
 - doppio run simultaneo → secondo run bloccato dal lock
 
 ### 5.3 Avvio AgentOS
@@ -623,9 +665,25 @@ Non promettere che "Claude è il migliore per orchestrator". Le scelte modello v
 
 Quando l'agente fa azioni reali (write su sistemi, editing di codice, creare contenuti pubblici), il Critic è la differenza tra "agente affidabile" e "agente da incidente". Sempre presente nel team se autonomy != read-only.
 
-### A6. Templates non rinominati
+### A6. Templates non rinominati, segnaposto sopravvissuti
 
-Un file lasciato come `main.py.template` invece di `main.py` è un bug latente. Tutti i template DEVONO essere renderizzati e rinominati. La presenza di file `.template` nel progetto target è sintomo di scaffolding incompleto. Verifica con grep che non restino `{{ placeholder }}`.
+Un file lasciato come `main.py.template` invece di `main.py` è un bug latente. Tutti i template DEVONO essere renderizzati e rinominati. La presenza di file `.template` nel progetto target è sintomo di scaffolding incompleto.
+
+Verifica con grep **entrambe** le forme di segnaposto:
+
+```bash
+grep -rn "{{" agent/ deploy/ scripts/          # placeholder Jinja
+grep -rn "TODO durante scaffolding" agent/     # segnaposto in prosa
+```
+
+La seconda è la più insidiosa: un `# TODO durante scaffolding: descrivi il
+perimetro` lasciato **dentro la stringa delle instructions** diventa la
+definizione di scope che il modello legge — cioè nessuno scope — e non è un
+`{{ }}`, quindi il primo grep non lo vede. Per questo i punti che finiscono nel
+system prompt sono espressi come placeholder (`{{ role_perimeter }}`,
+`{{ role_task }}`, `{{ ops_profiles }}`, `{{ orchestrator_flows }}`,
+`{{ vincoli_specifici_ruolo }}`) e la guida su cosa scriverci sta in un commento
+Python **fuori** dalla stringa.
 
 ### A7. Coding-agent senza guard
 
@@ -667,9 +725,10 @@ Prima di dichiarare "fatto":
 4. I ruoli che ho proposto riflettono il dominio specifico?
 5. I modelli hanno default + candidates per A/B testing?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
+6b. Il propose-and-confirm del coding-agent è **sul diff** (`git_propose_diff`) e non sulla singola `edit`? Con `edit: propose` il ciclo edit→verify non può chiudersi.
 7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo orienta→checkpoint→edit→verify→chiudi (con `project_context` obbligatorio al passo 1 e `log_decision` alla chiusura)?
-7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente, tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
-8. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
+7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente **con `metric_pattern` e `required: true`** (e nessuna pipe POSIX nei comandi della definition-of-done), tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
+8. I template sono renderizzati con valori reali: nessun `{{ placeholder }}` **e nessun `TODO durante scaffolding`** nei file finali (vedi A6)?
 9. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?
 10. Ho documentato il deploy in `runbook.md` (e l'operatività in `docs/ops/RUNBOOK.md` se schedulato)?
 11. Le boundaries hard sono nel system prompt + nella denylist del guard + nelle instructions del Critic?

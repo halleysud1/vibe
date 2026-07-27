@@ -1,6 +1,6 @@
 ---
 name: methodology
-description: "I principi del vibecoding per spec-driven development con Claude Code: filosofia dei tre livelli (business / ecosistema / tecnico), regola anti-overfit, gestione del contesto. Attiva all'inizio di un progetto o quando devi prendere una decisione di livello 1/2/3."
+description: "I principi del vibecoding per spec-driven development: i tre livelli (business / ecosistema / tecnico), la regola anti-overfit, la gestione del contesto. Usala quando devi decidere dove scrivere un'informazione di progetto (CLAUDE.md vs PROJECT_SPEC vs SKILL), quando un esempio concreto dell'utente sta per diventare codice (va reso default configurabile, non hardcoded), o quando prendi una decisione architetturale senza vincoli espliciti."
 ---
 
 # methodology — vibecoding SDD
@@ -220,19 +220,17 @@ Per change non banali → **Fase 5 di `/change-request`** (close the loop):
 
 ---
 
-## Stack default (L3, quando l'utente non vincola)
+## Nessuno stack di default
 
-| Layer | Default | Quando cambiare |
-|-------|---------|-----------------|
-| Backend | Python + FastAPI | Node se full-JS; .NET se vincolo ecosistema Windows |
-| Database | SQLite (dev) / PostgreSQL (prod) | DuckDB se analytics; SQL Server/MySQL se vincolo |
-| Auth | JWT + bcrypt | SPID/CIE se PA; OAuth2 se social |
-| Frontend | React + Tailwind | Vue se richiesto; vanilla se semplice |
-| Test | pytest / vitest | — |
-| Linter | ruff / eslint / biome | — |
-| Config | YAML/JSON | DB se serve UI di configurazione |
+Questa skill **non** prescrive framework, database o librerie. Sarebbe una
+contraddizione con l'anti-pattern qui sotto ("Specificare framework nel prompt →
+depotenzia il modello") e con il principio 2: il L3 è la tua zona di autonomia.
 
-La tabella vale **solo** quando il L2 (CLAUDE.md) non impone vincoli.
+Quando il L2 (CLAUDE.md) non impone vincoli, scegli lo stack sul caso concreto —
+ecosistema del team, competenze di chi manterrà il codice, natura del problema —
+e motiva la scelta in `docs/ARCHITECTURE.md` o in un ADR se è irreversibile.
+Un default scritto qui verrebbe applicato a progetti che non lo giustificano,
+e invecchierebbe senza che nessuno se ne accorga.
 
 ---
 

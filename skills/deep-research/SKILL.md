@@ -1,6 +1,6 @@
 ---
 name: deep-research
-description: "Protocollo portabile per cicli di ricerca profonda multi-round con Google Deep Research (Interactions API, task long-running 10-40 min) piu' gamba grounded veloce. Funnel ricorsivo a tre stadi tendenziali — inquadramento del problema, chiusura dei dubbi, focalizzazione verticale — dove controllo delle fonti e confronto a due gambe girano dopo ogni round e i dubbi strutturali si chiudono con round dedicati PRIMA di stringere l'imbuto, cosi' l'errore di premessa non si scopre a funnel speso. Matrice di accordo arbitrata sulla fonte primaria, scoring, sinottico auditabile con traccia della ricorsione, blueprint di state machine per il full-auto. Usa questa skill quando l'utente chiede una deep research, una ricerca approfondita o multi-round, uno scouting, una due diligence documentale, un'analisi normativa o di mercato, un benchmark di soluzioni, oppure parla di Gemini Deep Research, funnel di ricerca, ricerca long-running in background."
+description: "Conduce cicli di ricerca profonda multi-round con Google Deep Research come motore: funnel ricorsivo, gate umano prima di ogni round, verifica di ogni claim sulla fonte primaria, sinottico auditabile. Usala quando l'utente chiede esplicitamente una deep research, una ricerca multi-round o long-running, una due diligence documentale, un'analisi normativa o un benchmark con fonti ufficiali citabili. NON usarla per domande a risposta breve: un round costa 10-40 minuti e chiamate a pagamento, li' bastano WebSearch/WebFetch."
 allowed-tools: Read, Write, Edit, Glob, Grep, Bash, WebFetch, WebSearch, AskUserQuestion
 ---
 
@@ -62,7 +62,7 @@ RESEARCH_OUT_DIR=data/ricerche                         # cartella artefatti grez
 Check preliminare (non stampa mai i valori, solo prefisso e lunghezza):
 
 ```bash
-python skills/deep-research/scripts/env_loader.py
+python "${CLAUDE_PLUGIN_ROOT}/skills/deep-research/scripts/env_loader.py"
 ```
 
 > `google-genai < 2.0.0` non funziona: lo schema legacy `outputs[]` e' stato
@@ -167,7 +167,7 @@ ricorsione diventa un costo opaco che nessuno sa giustificare a posteriori.
 
 ## Fase 0 — Preflight
 
-1. `python skills/deep-research/scripts/env_loader.py` → `GEMINI_API_KEY` presente?
+1. `python "${CLAUDE_PLUGIN_ROOT}/skills/deep-research/scripts/env_loader.py"` → `GEMINI_API_KEY` presente?
    Se manca: fermati e chiedi all'utente di configurarla. Non proseguire "a vuoto".
 2. `Glob data/ricerche/*.json` → esiste gia' una ricerca sullo stesso tema?
    - **< 30 giorni**: proponi via `AskUserQuestion` di riusarla come base (lo
@@ -233,7 +233,7 @@ intervistare l'utente su cose che il progetto documenta gia'.
 ## Fase 3 — Lancio del round
 
 ```bash
-python skills/deep-research/scripts/deep_research.py \
+python "${CLAUDE_PLUGIN_ROOT}/skills/deep-research/scripts/deep_research.py" \
   --prompt-file data/ricerche/<data>_<tema>_<stadio>_prompt.md \
   --tag <data>_<tema>_<stadio>
 ```
@@ -300,7 +300,7 @@ Per ogni scheda confermata:
 Un modello **diverso** e piu' economico rilegge il corpus con mandato adversarial:
 
 ```bash
-python skills/deep-research/scripts/grounded_research.py \
+python "${CLAUDE_PLUGIN_ROOT}/skills/deep-research/scripts/grounded_research.py" \
   --prompt-file data/ricerche/<data>_<tema>_audit_prompt.md \
   --tag <data>_<tema>_audit
 ```

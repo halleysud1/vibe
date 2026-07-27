@@ -53,8 +53,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = PROJECT_ROOT / "data" / "pipeline_runs"
 RESEARCH_DIR = PROJECT_ROOT / os.getenv("RESEARCH_OUT_DIR", "data/ricerche")
 
+# Default: lo script COPIATO nel progetto (vedi WIRING.md § 1). Il plugin puo'
+# non essere installato sulla macchina che ospita il daemon: non puntarci.
 DR_SCRIPT = PROJECT_ROOT / os.getenv(
-    "DEEPRESEARCH_SCRIPT", "skills/deep-research/scripts/deep_research.py")
+    "DEEPRESEARCH_SCRIPT", "scripts/deep_research.py")
 
 # Parametri: SEMPRE da env con default. Mai hardcodare modelli o soglie nei sorgenti.
 POLL_SECONDS = int(os.getenv("PIPELINE_POLL_SECONDS", "60"))

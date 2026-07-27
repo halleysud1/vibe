@@ -4,23 +4,20 @@ from agno.agent import Agent
 from agent._models import resolve_model
 
 
+# Placeholder da renderizzare (NON lasciarli: finiscono nel system prompt).
+# {{ role_task }}: compito specifico — input atteso dall'orchestrator,
+#   elaborazione richiesta, output atteso (formato, lunghezza, destinazione).
+# {{ vincoli_specifici_ruolo }}: vincoli inviolabili (mai X, sempre Y).
 {{ role_name | upper }}_INSTRUCTIONS = """
 ## Ruolo: {{ role_name | capitalize }}
 
 {{ role_cfg.description }}
 
 ### Compito
-
-# TODO durante scaffolding: descrivere il compito specifico al ruolo,
-# le regole di esecuzione, i vincoli di output. Lascia spazio per:
-# - input atteso (cosa riceve dall'orchestrator)
-# - elaborazione richiesta
-# - output atteso (formato, lunghezza, dove viene salvato)
-# - vincoli inviolabili (formato, contenuto, tono)
+{{ role_task }}
 
 ### Vincoli
-
-# TODO: lista vincoli specifici al ruolo (mai fare X, sempre fare Y).
+{{ vincoli_specifici_ruolo }}
 """
 
 
