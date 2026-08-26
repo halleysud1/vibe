@@ -8,15 +8,19 @@ cose che facevano lavorare peggio l'agente, non refusi. Nessuna skill rimossa.
 ### Added — gate di rotta all'invocazione di agentify
 
 La prima domanda di agentify ora non è tecnica ma **economica e di hosting**,
-posta via `AskUserQuestion` prima di qualunque discovery: abbonamento Claude
-(nessun costo a token) → automazione **nativa Claude Code** (routine, workflow,
-subagent), agentify è overkill; API Anthropic a token ma zero infrastruttura →
-**Claude Managed Agents**; chiavi API esterne multi-vendor (Gemini, Claude API,
-OpenAI, GLM, DeepSeek, …) pagate a token con **hosting libero** (PC, server
-locale, cloud proprio) → **agentify**. I due moat di agentify sono dichiarati:
-multi-modello per ruolo e hosting sovrano — se il progetto non ha bisogno di
-nessuno dei due, la skill si ferma e lo dice. La rotta scelta si registra nel
-manifesto (`route.choice` + `route.reason`).
+posta via `AskUserQuestion` prima di qualunque discovery. Quattro rotte:
+abbonamento Claude + automazione interna → **nativo Claude Code** (routine,
+workflow, subagent); abbonamento Claude + agente standalone self-hosted
+Anthropic-only → **Claude Agent SDK con l'auth dell'abbonamento** (hosting
+libero a prezzo fisso, nessun costo a token); API Anthropic a token senza
+infrastruttura → **Claude Managed Agents**; chiavi API esterne multi-vendor
+(Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token con hosting
+libero (PC, server locale, cloud proprio) → **agentify**. Il moat dichiarato
+di agentify si riduce a uno ed è netto: **multi-modello per ruolo** — se
+l'agente può essere Anthropic-only, l'abbonamento vince sul costo e la skill
+si ferma dicendolo. La rotta scelta si registra nel manifesto (`route.choice`
++ `route.reason`), con i limiti onesti della rotta SDK+abbonamento (quota
+condivisa con l'uso interattivo, termini d'uso per servizi esposti a terzi).
 
 ### Changed — la tabella dei modelli si costruisce a ogni lancio
 

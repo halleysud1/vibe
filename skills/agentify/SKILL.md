@@ -34,7 +34,7 @@ La skill è **portabile** — funziona su qualsiasi progetto Claude Code in cui 
 
 **Non usarlo** quando:
 - Il progetto ha solo 1-2 skill banali → meglio uno script Python tradizionale
-- L'utente vuole solo "Claude Code in modalità autonoma" → meglio `claude -p ...` da cron
+- L'agente può essere **Anthropic-only** → è una rotta del gate qui sotto (nativo, Agent SDK sull'abbonamento, o CMA), non agentify
 - L'utente non sa ancora cosa l'agente debba fare → fai prima `/change-request` per chiarire
 
 ### Gate di rotta (OBBLIGATORIO, prima di Fase 0): chi paga i modelli e dove gira?
@@ -48,26 +48,31 @@ di qualunque discovery, poni la domanda via `AskUserQuestion`:
 
 | Risposta | Rotta | Perché |
 |---|---|---|
-| **Abbonamento Claude** — automazione per chi HA Claude Code | **Nativo Claude Code** (routine schedulate/cloud, workflow multi-agente, subagent, agent teams). Fermati: agentify è overkill | Il costo marginale è zero: è già coperto dal canone. Harness maturo, mantenuto da Anthropic |
+| **Abbonamento Claude** — automazione per chi HA Claude Code | **Nativo Claude Code** (routine schedulate/cloud, workflow multi-agente, subagent, agent teams). Fermati: agentify è overkill | Costo marginale zero: già coperto dal canone. Harness maturo, mantenuto da Anthropic |
+| **Abbonamento Claude** — agente **standalone** self-hosted, solo modelli Claude | **Claude Agent SDK con l'auth dell'abbonamento** (lo stesso token OAuth di Claude Code). Fermati e indica la strada | Hosting libero (PC, server locale, cloud proprio) **a prezzo fisso**: nessun costo a token. Harness completo (context management, subagent, tool) mantenuto da Anthropic |
 | **API Anthropic a token, zero infrastruttura da gestire**, solo modelli Claude | **Claude Managed Agents (CMA)**. Fermati e indica la strada | Agente hostato da Anthropic: sessioni, scheduled deployments, vault per le credenziali, budget in $ per sessione. Paghi a token ma non gestisci server |
-| **Chiavi API esterne multi-vendor** (Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token, **hosting libero** — il tuo PC, un server locale, un cloud qualsiasi | **agentify**: prosegui con Fase 0 | È l'unica delle tre rotte con multi-modello per ruolo e piena proprietà dell'infrastruttura |
+| **Chiavi API esterne multi-vendor** (Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token, **hosting libero** — il tuo PC, un server locale, un cloud qualsiasi | **agentify**: prosegui con Fase 0 | È l'unica rotta con **multi-modello per ruolo** |
 
-I due moat di agentify sono esattamente questi: **multi-modello per ruolo**
-(nessun lock-in di vendor, costo ottimizzato task per task) e **hosting
-sovrano** (codice, dati e modelli girano dove decide l'utente). Se il progetto
-non ha bisogno di nessuno dei due, la risposta onesta è una delle prime due
-righe — dillo e fermati.
+Il moat di agentify è **uno**: il multi-modello per ruolo (nessun lock-in di
+vendor, costo ottimizzato task per task, modelli cinesi/Gemini/OpenAI dove
+convengono). L'hosting sovrano NON è più un'esclusiva — l'Agent SDK
+sull'abbonamento è anch'esso self-hosted, e a costo fisso. Quindi il test è
+secco: **se l'agente può essere Anthropic-only, l'abbonamento vince sul costo
+e agentify non è la risposta.** agentify si giustifica solo quando servono
+modelli di più vendor.
 
-Precisazione di fatturazione da dare all'utente se chiede: l'abbonamento copre
-Claude Code (incluse routine e sessioni cloud); **CMA è fatturato a token via
-API come agentify** — la differenza con agentify è chi gestisce
-l'infrastruttura (Anthropic) e il vincolo Anthropic-only, non il modello di
-pagamento.
+Limiti onesti della rotta Agent SDK + abbonamento, da dichiarare:
+
+- la **quota è quella dell'abbonamento**, condivisa con l'uso interattivo di
+  Claude Code: un servizio always-on ad alto volume può esaurirla o
+  strozzarsi nei rate limit — a quel punto si passa a CMA o API a token;
+- per un servizio esposto a **utenti terzi**, verificare che i termini
+  dell'abbonamento coprano quell'uso; in dubbio, la rotta pulita è CMA.
 
 Restano validi due discriminanti secondari, qualunque sia la rotta:
 
 - **Utenti finali terzi senza Claude Code** (chat Telegram, servizio esposto) →
-  esclude il nativo; resta CMA (se Anthropic-only) o agentify.
+  esclude il nativo; restano Agent SDK/CMA (se Anthropic-only) o agentify.
 - **Sviluppo software open-ended** → Claude Code è superiore comunque; il
   coding-agent di agentify vale per la manutenzione **delimitata** dentro una
   pipeline autonoma, non per lo sviluppo esplorativo.
@@ -150,9 +155,8 @@ Mostra trade-off tra engine candidati basati sui requisiti emersi:
 | Engine | Quando ha senso |
 |---|---|
 | **Agno + AgentOS** | Default. Multi-trigger (cron+chat+events), memoria persistente, multi-modello, UI inclusa. |
-| **Claude Agent SDK + custom service** | Pieno controllo, no framework lock-in. Più LOC ma semplicità concettuale. Anthropic-only. |
 | **Loop a mano (200 LOC Python)** | Caso semplice (singolo trigger, no UI), zero dipendenze pesanti. |
-| **Managed Agents / sub-agent Claude Code** | Già esclusi al **gate di rotta**: se sei arrivato a questa fase, il progetto richiede multi-vendor o hosting proprio. Se l'intervista li fa riemergere (es. cade il requisito multi-modello), torna al gate invece di forzare agentify. |
+| **Claude Agent SDK / Managed Agents / sub-agent Claude Code** | Già esclusi al **gate di rotta**: sono le rotte Anthropic-only (l'Agent SDK gira perfino a costo fisso sull'abbonamento). Se sei a questa fase, il progetto richiede multi-vendor. Se l'intervista fa cadere quel requisito, **torna al gate** invece di forzare agentify. |
 
 ### Filtri automatici
 
