@@ -37,23 +37,43 @@ La skill è **portabile** — funziona su qualsiasi progetto Claude Code in cui 
 - L'utente vuole solo "Claude Code in modalità autonoma" → meglio `claude -p ...` da cron
 - L'utente non sa ancora cosa l'agente debba fare → fai prima `/change-request` per chiarire
 
-### Routine nativa Claude Code vs agente standalone (decidere PRIMA di Fase 1)
+### Gate di rotta (OBBLIGATORIO, prima di Fase 0): chi paga i modelli e dove gira?
 
-Claude Code copre nativamente molta automazione (scheduled tasks/routine cloud,
-workflow multi-agente, subagent, hooks). agentify vale dove il nativo non
-arriva — dichiaralo esplicitamente all'utente:
+agentify non è l'unica via per avere un agente, e la prima domanda non è
+tecnica — è **economica e di hosting**. Appena la skill viene invocata, PRIMA
+di qualunque discovery, poni la domanda via `AskUserQuestion`:
 
-| Requisito | Routine/workflow nativi | agentify |
-|---|:---:|:---:|
-| Automazione interna schedulata (check, report, refresh) per chi HA Claude Code | ✅ più semplice e mantenuto | ⚠️ overkill |
-| Utenti finali TERZI senza Claude Code (chat Telegram, servizio) | ❌ | ✅ |
-| Multi-modello per costo (GLM/Gemini/DeepSeek per ruolo) | ❌ | ✅ |
-| Servizio always-on con memoria longitudinale di dominio | parziale | ✅ |
-| Sviluppo software open-ended | ✅ superiore (harness maturo) | ❌ usa Claude Code |
-| Manutenzione codice delimitata dentro una pipeline autonoma | — | ✅ coding-agent + harness |
+> *"Questo agente girerà sull'**abbonamento Claude** (nessun costo a token) o su
+> **chiavi API pagate a token**? E l'infrastruttura la gestisci tu o no?"*
 
-Se tutte le esigenze dell'utente cadono nella prima colonna, fermati e
-suggerisci le routine native: è il consiglio onesto.
+| Risposta | Rotta | Perché |
+|---|---|---|
+| **Abbonamento Claude** — automazione per chi HA Claude Code | **Nativo Claude Code** (routine schedulate/cloud, workflow multi-agente, subagent, agent teams). Fermati: agentify è overkill | Il costo marginale è zero: è già coperto dal canone. Harness maturo, mantenuto da Anthropic |
+| **API Anthropic a token, zero infrastruttura da gestire**, solo modelli Claude | **Claude Managed Agents (CMA)**. Fermati e indica la strada | Agente hostato da Anthropic: sessioni, scheduled deployments, vault per le credenziali, budget in $ per sessione. Paghi a token ma non gestisci server |
+| **Chiavi API esterne multi-vendor** (Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token, **hosting libero** — il tuo PC, un server locale, un cloud qualsiasi | **agentify**: prosegui con Fase 0 | È l'unica delle tre rotte con multi-modello per ruolo e piena proprietà dell'infrastruttura |
+
+I due moat di agentify sono esattamente questi: **multi-modello per ruolo**
+(nessun lock-in di vendor, costo ottimizzato task per task) e **hosting
+sovrano** (codice, dati e modelli girano dove decide l'utente). Se il progetto
+non ha bisogno di nessuno dei due, la risposta onesta è una delle prime due
+righe — dillo e fermati.
+
+Precisazione di fatturazione da dare all'utente se chiede: l'abbonamento copre
+Claude Code (incluse routine e sessioni cloud); **CMA è fatturato a token via
+API come agentify** — la differenza con agentify è chi gestisce
+l'infrastruttura (Anthropic) e il vincolo Anthropic-only, non il modello di
+pagamento.
+
+Restano validi due discriminanti secondari, qualunque sia la rotta:
+
+- **Utenti finali terzi senza Claude Code** (chat Telegram, servizio esposto) →
+  esclude il nativo; resta CMA (se Anthropic-only) o agentify.
+- **Sviluppo software open-ended** → Claude Code è superiore comunque; il
+  coding-agent di agentify vale per la manutenzione **delimitata** dentro una
+  pipeline autonoma, non per lo sviluppo esplorativo.
+
+Registra la rotta scelta nel manifesto (`route: agentify` + una riga di
+motivazione): la prossima sessione non deve rifare il ragionamento.
 
 ---
 
@@ -130,9 +150,9 @@ Mostra trade-off tra engine candidati basati sui requisiti emersi:
 | Engine | Quando ha senso |
 |---|---|
 | **Agno + AgentOS** | Default. Multi-trigger (cron+chat+events), memoria persistente, multi-modello, UI inclusa. |
-| **Claude Agent SDK + custom service** | Pieno controllo, no framework lock-in. Più LOC ma semplicità concettuale. |
+| **Claude Agent SDK + custom service** | Pieno controllo, no framework lock-in. Più LOC ma semplicità concettuale. Anthropic-only. |
 | **Loop a mano (200 LOC Python)** | Caso semplice (singolo trigger, no UI), zero dipendenze pesanti. |
-| **Sub-agent in Claude Code** | Se l'agente deve girare DENTRO Claude Code (non standalone) → questa skill non è la soluzione, usa subagents. |
+| **Managed Agents / sub-agent Claude Code** | Già esclusi al **gate di rotta**: se sei arrivato a questa fase, il progetto richiede multi-vendor o hosting proprio. Se l'intervista li fa riemergere (es. cade il requisito multi-modello), torna al gate invece di forzare agentify. |
 
 ### Filtri automatici
 
@@ -182,35 +202,58 @@ Per ogni ruolo, chiedi all'utente:
 - **Default model**: il modello consigliato
 - **Candidates**: lista di alternative per A/B test (utente sperimenterà)
 
-### Default model raccomandati (baseline 4.0.x)
+### La tabella dei modelli si costruisce A OGNI LANCIO, non si legge
 
-Punto di partenza per l'intervista — restano default+candidates da **provare col
-bench** (anti-pattern A4), non verità assolute:
+Questa skill **non contiene** una tabella di modelli raccomandati, per lo
+stesso motivo per cui `methodology` non ha più una tabella "stack default": i
+nomi e i prezzi dei modelli invecchiano in mesi, e una tabella scritta qui
+diventa il default che nessuno rimette più in discussione. Qui vive il
+**metodo**; i valori si raccolgono al momento del lancio.
 
-| Ruolo | Default | Candidates |
-|---|---|---|
-| Orchestrator | `gemini-3.1-pro-preview` | `glm-5.2` |
-| Analyzer | `gemini-3.1-pro-preview` | `glm-5.2` |
-| Writer | `gemini-3.5-flash` | — |
-| Critic | `deepseek-v4-pro` | — |
-| coding-agent (il "coder") | `glm-5.2` | `gemini-3.1-pro-preview` |
-| scout | `gemini-3.5-flash` | — |
-| high-level-ops | `gemini-3.5-flash` | `glm-5.2` |
+**1. La parte stabile — requisiti di capability per ruolo:**
 
-Per il coder la scelta tra default e candidate si fa **coi numeri**: golden
-task in `eval_coder` (Fase 5.5), non a sensazione.
+| Ruolo | Cosa deve saper fare il modello |
+|---|---|
+| Orchestrator | tool calling solido, routing affidabile tra specialisti |
+| Analyzer | reasoning su dati strutturati |
+| Writer | testo lungo di qualità, veloce ed economico |
+| Critic | second opinion — **vendor DIVERSO dal ruolo che critica**, per indipendenza reale |
+| coding-agent | agentic coding forte, patch precise, livelli di effort/reasoning alti disponibili |
+| scout | economico e veloce, contesto ampio |
+| high-level-ops | economico, tool calling affidabile |
 
-Env attese: `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY` (GLM via
-endpoint OpenAI-compatible di Z.ai — vedi `_models.py`).
+**2. Ricognizione al lancio:**
+
+- Chiedi all'utente **quali provider ha** (quali chiavi API possiede o vuole
+  attivare) e se ha già preferenze di modello.
+- **Non fidarti dei nomi modello nella tua memoria**: cambiano ogni pochi
+  mesi. Se hai accesso al web, verifica id correnti e prezzi sui listini
+  ufficiali dei provider scelti; altrimenti fatteli dare dall'utente.
+- Il rapporto prezzo/capacità tra vendor si ribalta a ogni generazione: la
+  scelta fatta per il progetto precedente non è un precedente valido.
+
+**3. Compila `models.roles` nel manifesto** con default + candidates per
+ruolo, e registra la **data della ricognizione** (`models.surveyed_at`): alla
+prossima manutenzione si saprà quanto sono vecchie le scelte.
+
+**4. Il verdetto resta dei numeri** (anti-pattern A4): bench per i ruoli di
+testo (5.4), `eval_coder` sui golden task per il coder (5.5).
+
+Env attese: una chiave per provider scelto — vedi `_models.py` per i prefissi
+supportati e le rispettive variabili (es. `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`,
+`DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`).
 
 ### Reasoning policy: decide l'Orchestrator
 
-Il livello di ragionamento (`low`/`medium`/`high`) NON è fissato per ruolo: lo
-sceglie l'**Orchestrator task per task** al momento della delega (manifesto:
-`models.reasoning_policy: orchestrator`). Il factory `resolve_model(id,
-reasoning=...)` traduce il livello nel parametro del provider (thinking budget
-per Gemini/Claude, `reasoning_effort` per GPT, thinking on/off per
-DeepSeek/GLM), con fallback pulito se il provider non lo supporta.
+Il livello di ragionamento NON è fissato per ruolo: lo sceglie
+l'**Orchestrator task per task** al momento della delega (manifesto:
+`models.reasoning_policy: orchestrator`), sulla scala `low`/`medium`/`high`.
+Il factory `resolve_model(id, reasoning=...)` traduce il livello nel parametro
+del provider: **effort per i Claude 5-family** (dove `high` mappa su `xhigh`,
+il livello raccomandato per l'agentic coding; `budget_tokens` è stato rimosso
+dall'API e va mai inviato), `reasoning_effort` per GPT, thinking budget per
+Gemini, thinking on/off per DeepSeek/GLM — con fallback pulito se il provider
+non lo supporta.
 
 → **Output**: sezione `models.roles` (+ `models.reasoning_policy`) del manifesto.
 
@@ -719,11 +762,12 @@ Caso reale: un coding-agent ha aggiunto una funzione a un pannello esistente —
 
 Prima di dichiarare "fatto":
 
+0. Ho fatto il **gate di rotta** (abbonamento → nativo / API Anthropic zero-infra → CMA / chiavi multi-vendor + hosting libero → agentify) e registrato la scelta nel manifesto (`route`)?
 1. Ho fatto Fase 1 con domande mirate, non assunto un'identità?
 2. Ho mostrato il manifesto all'utente per validazione?
 3. Ho discusso engine + razionale con l'utente, non scelto unilateralmente?
 4. I ruoli che ho proposto riflettono il dominio specifico?
-5. I modelli hanno default + candidates per A/B testing?
+5. I modelli hanno default + candidates per A/B testing, scelti con una **ricognizione fatta al lancio** (non da memoria) e datata nel manifesto (`models.surveyed_at`)?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
 6b. Il propose-and-confirm del coding-agent è **sul diff** (`git_propose_diff`) e non sulla singola `edit`? Con `edit: propose` il ciclo edit→verify non può chiudersi.
 7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo orienta→checkpoint→edit→verify→chiudi (con `project_context` obbligatorio al passo 1 e `log_decision` alla chiusura)?

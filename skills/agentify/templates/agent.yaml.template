@@ -2,6 +2,12 @@
 # Generato dalla skill agentify (v1)
 # Engine: {{ engine }}  |  Strategia modelli: {{ models.strategy }}
 
+# Esito del gate di rotta (vedi SKILL.md): perche' agentify e non
+# nativo Claude Code (abbonamento) o Managed Agents (API Anthropic, zero infra).
+route:
+  choice: agentify
+  reason: "{{ route.reason }}"   # es. "multi-vendor (Gemini+GLM) + hosting su server locale"
+
 identity:
   name: "{{ identity.name }}"
   role: "{{ identity.role }}"
@@ -75,6 +81,9 @@ mcp_servers:
 models:
   strategy: {{ models.strategy }}            # team | single
   team_mode: {{ models.team_mode }}          # route | coordinate
+  # Data della ricognizione modelli/prezzi fatta al lancio di agentify:
+  # id e prezzi invecchiano in mesi, alla prossima manutenzione si riparte da qui.
+  surveyed_at: "{{ models.surveyed_at }}"    # YYYY-MM-DD
   reasoning_policy: {{ models.reasoning_policy | default('orchestrator') }}  # orchestrator = il team leader decide low/medium/high per task
   roles:
     {% for role_name, role_cfg in models.roles.items() %}{{ role_name }}:

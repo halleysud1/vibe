@@ -5,6 +5,41 @@
 Release di hardening: tutti i difetti corretti qui erano **comportamentali** —
 cose che facevano lavorare peggio l'agente, non refusi. Nessuna skill rimossa.
 
+### Added — gate di rotta all'invocazione di agentify
+
+La prima domanda di agentify ora non è tecnica ma **economica e di hosting**,
+posta via `AskUserQuestion` prima di qualunque discovery: abbonamento Claude
+(nessun costo a token) → automazione **nativa Claude Code** (routine, workflow,
+subagent), agentify è overkill; API Anthropic a token ma zero infrastruttura →
+**Claude Managed Agents**; chiavi API esterne multi-vendor (Gemini, Claude API,
+OpenAI, GLM, DeepSeek, …) pagate a token con **hosting libero** (PC, server
+locale, cloud proprio) → **agentify**. I due moat di agentify sono dichiarati:
+multi-modello per ruolo e hosting sovrano — se il progetto non ha bisogno di
+nessuno dei due, la skill si ferma e lo dice. La rotta scelta si registra nel
+manifesto (`route.choice` + `route.reason`).
+
+### Changed — la tabella dei modelli si costruisce a ogni lancio
+
+Rimossa la tabella statica dei default modello dalla Fase 3 (stesso principio
+della rimozione dello "Stack default" da methodology: una tabella scritta nella
+skill diventa il default che nessuno rimette in discussione, e i nomi/prezzi
+dei modelli invecchiano in mesi). Restano i **requisiti di capability per
+ruolo** (la parte stabile); id, prezzi e provider si raccolgono con una
+**ricognizione al momento del lancio** — chiedendo all'utente quali chiavi ha e
+verificando i listini correnti, mai dalla memoria del modello — e si datano nel
+manifesto (`models.surveyed_at`). Il verdetto resta del bench e di `eval_coder`
+(anti-pattern A4).
+
+### Fixed — `_models.py`: `budget_tokens` rimosso dall'API Claude (errore 400)
+
+Il factory traduceva il reasoning per i modelli `claude-*` in
+`{"thinking": {"type": "enabled", "budget_tokens": N}}`: sui Claude 5-family la
+shape è **rifiutata con un 400**, quindi ogni delega dell'Orchestrator con un
+livello di reasoning verso un ruolo Claude moriva a runtime. Ora: thinking
+**adattivo** + **effort** (`low`/`medium`/`xhigh` — `high` interno mappa su
+`xhigh`, il livello raccomandato per l'agentic coding), mai `disabled`, mai
+`budget_tokens`. Il thinking budget a token resta solo per Gemini.
+
 ### Fixed — i path degli script erano sbagliati per chiunque installi il plugin
 
 Nessuna skill usava `${CLAUDE_PLUGIN_ROOT}`: 15 invocazioni su 3 skill puntavano
