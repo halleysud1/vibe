@@ -5,10 +5,16 @@
 Release di hardening: tutti i difetti corretti qui erano **comportamentali** —
 cose che facevano lavorare peggio l'agente, non refusi. Nessuna skill rimossa.
 
-### Added — gate di rotta all'invocazione di agentify
+### Added — intervista d'ingresso + gate di rotta all'invocazione di agentify
 
-La prima domanda di agentify ora non è tecnica ma **economica e di hosting**,
-posta via `AskUserQuestion` prima di qualunque discovery. Quattro rotte:
+Appena agentify viene invocata — prima della discovery — parte SEMPRE
+un'**intervista sui casi d'uso** via `AskUserQuestion` (cosa deve fare
+l'agente con esempi concreti, chi lo usa, dove gira, chi paga i modelli e se
+serve più di un vendor), anche quando la richiesta sembra già chiara: la rotta
+dipende dai casi d'uso, e assumerli è il modo tipico di scaffoldare la cosa
+sbagliata. Le risposte confluiscono nel manifesto (`route.use_cases`) e fanno
+da input alla Fase 1, che non le richiede. Sulla base delle risposte il gate
+decide fra quattro rotte:
 abbonamento Claude + automazione interna → **nativo Claude Code** (routine,
 workflow, subagent); abbonamento Claude + agente standalone self-hosted
 Anthropic-only → **Claude Agent SDK con l'auth dell'abbonamento** (hosting

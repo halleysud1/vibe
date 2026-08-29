@@ -37,14 +37,30 @@ La skill è **portabile** — funziona su qualsiasi progetto Claude Code in cui 
 - L'agente può essere **Anthropic-only** → è una rotta del gate qui sotto (nativo, Agent SDK sull'abbonamento, o CMA), non agentify
 - L'utente non sa ancora cosa l'agente debba fare → fai prima `/change-request` per chiarire
 
-### Gate di rotta (OBBLIGATORIO, prima di Fase 0): chi paga i modelli e dove gira?
+### Intervista d'ingresso (OBBLIGATORIA, appena la skill è invocata): prima i casi d'uso, poi la rotta
 
-agentify non è l'unica via per avere un agente, e la prima domanda non è
-tecnica — è **economica e di hosting**. Appena la skill viene invocata, PRIMA
-di qualunque discovery, poni la domanda via `AskUserQuestion`:
+Appena agentify viene invocata — PRIMA della discovery e prima di scegliere
+qualunque rotta — si fa un'**intervista sui casi d'uso**. Sempre, anche quando
+la richiesta sembra già chiara: la rotta giusta dipende dai casi d'uso, e
+assumerli invece di chiederli è il modo tipico di scaffoldare la cosa sbagliata.
 
-> *"Questo agente girerà sull'**abbonamento Claude** (nessun costo a token) o su
-> **chiavi API pagate a token**? E l'infrastruttura la gestisci tu o no?"*
+Via `AskUserQuestion`, un batch:
+
+1. **Casi d'uso concreti** — cosa deve fare l'agente, elencati uno per uno
+   ("rispondere ai clienti su Telegram", "report settimanale sui progetti",
+   "manutenzione del modulo X"). Esempi reali, non categorie astratte.
+2. **Chi lo usa** — solo l'utente / colleghi con Claude Code / utenti terzi
+   senza Claude Code.
+3. **Dove deve girare** — PC dell'utente / server locale / cloud proprio /
+   nessuna infrastruttura da gestire.
+4. **Chi paga i modelli** — abbonamento Claude (prezzo fisso) o chiavi API a
+   token? E serve più di un vendor (Gemini, OpenAI, GLM, DeepSeek, …) o basta
+   Anthropic?
+
+Le risposte 1-2 diventano anche **input della Fase 1** (Identity Interview):
+lì si approfondisce l'identità, non si rifanno queste domande.
+
+### Il gate di rotta: le risposte decidono da sole
 
 | Risposta | Rotta | Perché |
 |---|---|---|
@@ -77,8 +93,9 @@ Restano validi due discriminanti secondari, qualunque sia la rotta:
   coding-agent di agentify vale per la manutenzione **delimitata** dentro una
   pipeline autonoma, non per lo sviluppo esplorativo.
 
-Registra la rotta scelta nel manifesto (`route: agentify` + una riga di
-motivazione): la prossima sessione non deve rifare il ragionamento.
+Registra nel manifesto la rotta scelta (`route.choice` + `route.reason`) **e i
+casi d'uso raccolti nell'intervista d'ingresso**: la prossima sessione non deve
+rifare né il ragionamento né le domande.
 
 ---
 
@@ -766,7 +783,7 @@ Caso reale: un coding-agent ha aggiunto una funzione a un pannello esistente —
 
 Prima di dichiarare "fatto":
 
-0. Ho fatto il **gate di rotta** (abbonamento → nativo / API Anthropic zero-infra → CMA / chiavi multi-vendor + hosting libero → agentify) e registrato la scelta nel manifesto (`route`)?
+0. Ho fatto l'**intervista d'ingresso sui casi d'uso** (sempre, anche se la richiesta sembrava chiara) e POI il **gate di rotta** (abbonamento → nativo o Agent SDK / API Anthropic zero-infra → CMA / chiavi multi-vendor + hosting libero → agentify), registrando rotta e casi d'uso nel manifesto (`route`)?
 1. Ho fatto Fase 1 con domande mirate, non assunto un'identità?
 2. Ho mostrato il manifesto all'utente per validazione?
 3. Ho discusso engine + razionale con l'utente, non scelto unilateralmente?
