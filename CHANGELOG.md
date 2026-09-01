@@ -28,6 +28,41 @@ si ferma dicendolo. La rotta scelta si registra nel manifesto (`route.choice`
 + `route.reason`), con i limiti onesti della rotta SDK+abbonamento (quota
 condivisa con l'uso interattivo, termini d'uso per servizi esposti a terzi).
 
+### Added — nuova skill `guify`: distribuisci una lavorazione come interfaccia grafica
+
+Una lavorazione Claude Code funziona per chi usa Claude Code; per tutti gli
+altri si distribuisce come **GUI** — invece di consegnare la cartella con le
+skill, si consegna un'interfaccia dove il lavoro si lancia, si osserva e si
+approva senza vedere Claude. Nata dall'intervista con l'utente (casi d'uso:
+console di controllo, dashboard, form→prompt, chat custom; utenti: colleghi e
+terzi; direzione: bidirezionale).
+
+- **Gate multi-superficie** (stesso pattern dell'intervista d'ingresso di
+  agentify): widget in-chat via `sendPrompt()` per chi ha la sessione aperta;
+  **artifact con capabilities** per colleghi con account Claude (stato
+  condiviso, commenti e salvataggi che svegliano la sessione); **app
+  standalone self-hosted** per chi non ha account — FastAPI con due engine
+  intercambiabili: `sdk` (sessioni Claude headless via Agent SDK,
+  **abbonamento a prezzo fisso**) o `agentos` (REST dell'agente agentify +
+  OUTBOX). Se i casi d'uso sono misti si sceglie la superficie della persona
+  meno privilegiata.
+- **Regole di sicurezza G1-G6**, enforcement meccanico come il tool-guard:
+  per i terzi **form→prompt strutturati di default** (chat libera collegata a
+  una sessione con tool = prompt injection by design; si concede per decisione
+  esplicita, a ruoli elencati, con la sessione a permessi ridotti); **RBAC a
+  livello endpoint default-deny** (mai nel system prompt); token Claude solo
+  server-side; approvazioni sul **diff reale**; sessione sotto la GUI con
+  `allowed_tools`/`permission_mode` dichiarati nel manifesto; audit
+  append-only.
+- **Template**: manifesto `gui.yaml`, backend FastAPI (task/form/outbox/
+  dashboard/chat), adapter `engine_sdk` (claude-agent-sdk con fallback CLI
+  headless) e `engine_agentos` (REST + approvazione PENDING→APPROVED firmata
+  in OUTBOX, senza scavalcare il propose-and-confirm), `rbac.py`, `prompts.py`
+  (form dichiarati con validazione regex), frontend single-file con tab per
+  capability, `test_rbac.py` (default-deny, free-chat gating — no API calls).
+- **PATTERNS.md** per le superfici leggere (widget e artifact): pattern, non
+  scaffold — la superficie pesante per un caso leggero è l'anti-pattern G-A5.
+
 ### Changed — la tabella dei modelli si costruisce a ogni lancio
 
 Rimossa la tabella statica dei default modello dalla Fase 3 (stesso principio

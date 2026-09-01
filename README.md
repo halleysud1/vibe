@@ -25,6 +25,7 @@ scaffold.
 | Si aggiunge la feature nuova e la vecchia resta viva accanto | `change-request`: impact analysis, spec prima del codice, migrazione esplicita, **niente parallel flows** |
 | A fine lavoro test verdi e documentazione stale | **Fase 5 — close the loop**: spec, ADR, snapshot e journal aggiornati nella stessa change |
 | Serve un agente che giri dove Claude Code non c'è | `agentify`: scaffolda un agente standalone con ruoli multi-modello, tool-guard e autonomy gates |
+| La lavorazione va consegnata a chi non usa Claude Code | `guify`: la distribuisci come **interfaccia grafica** — console di controllo, dashboard, form, chat — invece che come cartella con le skill |
 | Una ricerca va consegnata a un terzo che deve poterla verificare riga per riga | `deep-research`: funnel ricorsivo, ogni claim arbitrato sulla fonte primaria, sinottico auditabile |
 | Una spec va consegnata come documento presentabile | `md-to-pdf`: Markdown → PDF impaginato |
 
@@ -43,6 +44,7 @@ al modello.
 | **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows, propagazione della documentazione |
 | **Skill `validation-strategies`** | Checklist di scenari di validazione per tipo di app (web, API, bot, CLI, pipeline, IoT); la meccanica è delegata ai tool nativi (`/verify`, `/run`, Claude Preview) |
 | **Skill `agentify`** | Trasforma un progetto Claude Code in agente Agno standalone. Ruoli tool-empowered con harness completo: **coding-agent** (tool edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode) + verify loop sulla definition-of-done, checkpoint/rollback git, **scout** a contesto separato, repo map, eval su golden task), **high-level-ops** (run schedulate) — governati da tool-guard con autonomy gates L0-L5, gate anti-degrado, audit trail e propose-and-confirm sul diff |
+| **Skill `guify`** | Distribuisce una lavorazione come **GUI collegata alla sessione o all'agente**. Gate multi-superficie: widget in-chat (`sendPrompt`), artifact con capabilities (per colleghi con account Claude), app standalone self-hosted — FastAPI sopra **Agent SDK** (abbonamento a prezzo fisso) o **AgentOS** (agentify) — con RBAC default-deny, form→prompt strutturati per i terzi, approvazioni sul diff reale, audit |
 | **Skill `deep-research`** | Cicli di ricerca profonda **ricorsivi** con Google Deep Research come motore: inquadramento → chiusura dei dubbi → focalizzazione, controllo delle fonti dopo ogni round, arbitraggio sulla fonte primaria (mai a maggioranza fra LLM), sinottico con traccia della ricorsione. Include blueprint di state machine per il full-auto |
 | **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (Chromium ad alta fedeltà o pure-python), con sintesi AI opzionale |
 | **Comando `/vibecoding:init`** | Entry point per bootstrappare un progetto: richiama `skill-bootstrap` |
@@ -156,6 +158,13 @@ vibe/
 │   │   ├── prompts/                 # template dei round + audit adversarial
 │   │   ├── references/              # Interactions API verificata, calibrazione del funnel
 │   │   └── templates/fullauto/      # state machine, tool di chat, WIRING.md
+│   ├── guify/
+│   │   ├── SKILL.md                 # gate multi-superficie + regole di sicurezza G1-G6
+│   │   └── templates/
+│   │       ├── gui.yaml.template    # manifesto della GUI
+│   │       ├── standalone/          # FastAPI + engine sdk/agentos + RBAC + frontend + test
+│   │       ├── artifact/PATTERNS.md # GUI come pagina pubblicata (colleghi con account)
+│   │       └── widget/PATTERNS.md   # GUI in-chat (sendPrompt)
 │   └── md-to-pdf/
 │       ├── SKILL.md
 │       ├── scripts/
@@ -179,6 +188,7 @@ nella directory del plugin installato, non nel progetto.
 - Per `agentify`: Python 3.10+ con `agno`, `pyyaml`, `python-dotenv` se usi il default Agno
 - Per `deep-research`: Python 3.10+ con `google-genai>=2.0.0` e `GEMINI_API_KEY` in ambiente o `.env`
 - Per `md-to-pdf`: `playwright` + Chromium per l'alta fedeltà, oppure `markdown-pdf` come fallback offline
+- Per `guify` (superficie standalone): Python 3.10+ con `fastapi`, `uvicorn`, `pyyaml`; engine sdk: `claude-agent-sdk` (o la CLI `claude`); engine agentos: `httpx`
 
 ---
 

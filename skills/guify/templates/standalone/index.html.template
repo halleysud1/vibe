@@ -1,0 +1,154 @@
+<!doctype html>
+<!-- GUI di lavorazione — frontend single-file (scaffoldato da /guify).
+     Punto di partenza deliberatamente minimale: tab in base alle capability
+     dell'account (/api/me). Nessun token Claude qui: solo il token GUI. -->
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ gui_title | default('Console di lavorazione') }}</title>
+<style>
+  :root { --bg:#f7f7f8; --fg:#1a1a1e; --card:#fff; --accent:#2563eb; --border:#ddd; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141417; --fg:#eee; --card:#1e1e23; --accent:#7aa2ff; --border:#333; }
+  }
+  body { margin:0; font-family:system-ui,sans-serif; background:var(--bg); color:var(--fg); }
+  header { padding:.8rem 1.2rem; border-bottom:1px solid var(--border); display:flex; gap:1rem; align-items:center; }
+  nav button { background:none; border:none; color:var(--fg); padding:.4rem .8rem; cursor:pointer; border-radius:6px; }
+  nav button.active { background:var(--accent); color:#fff; }
+  main { padding:1.2rem; max-width:960px; margin:auto; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+  textarea,input,select { width:100%; box-sizing:border-box; padding:.5rem; border-radius:6px; border:1px solid var(--border); background:var(--bg); color:var(--fg); }
+  button.act { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:.5rem 1rem; cursor:pointer; margin-top:.5rem; }
+  pre { white-space:pre-wrap; overflow-x:auto; font-size:.85rem; }
+  .hide { display:none; }
+</style>
+</head>
+<body>
+<header>
+  <strong id="title">…</strong>
+  <nav id="tabs"></nav>
+  <span style="margin-left:auto" id="who"></span>
+</header>
+<main>
+  <div class="card hide" id="login">
+    <p>Token di accesso:</p>
+    <input id="tok" type="password" placeholder="token">
+    <button class="act" onclick="login()">Entra</button>
+  </div>
+
+  <section id="tab-dashboard" class="hide">
+    <div class="card"><h3>Stato</h3><pre id="state">…</pre></div>
+    <div class="card"><h3>Task recenti</h3><pre id="tasks">…</pre></div>
+  </section>
+
+  <section id="tab-form" class="hide">
+    <div class="card">
+      <h3>Nuova richiesta</h3>
+      <select id="formSel"></select>
+      <div id="formFields"></div>
+      <button class="act" onclick="submitForm()">Invia</button>
+      <pre id="formOut"></pre>
+    </div>
+  </section>
+
+  <section id="tab-outbox" class="hide">
+    <div class="card"><h3>Proposte in attesa</h3><div id="proposals">…</div></div>
+  </section>
+
+  <section id="tab-chat" class="hide">
+    <div class="card">
+      <h3>Chat</h3>
+      <pre id="chatLog"></pre>
+      <textarea id="chatIn" rows="3" placeholder="Scrivi…"></textarea>
+      <button class="act" onclick="sendChat()">Invia</button>
+    </div>
+  </section>
+</main>
+<script>
+let ME = null, SESSION = null;
+const $ = id => document.getElementById(id);
+const api = (path, opts={}) => fetch(path, {...opts, headers: {
+  "Authorization": "Bearer " + (localStorage.getItem("gui_token")||""),
+  "Content-Type": "application/json", ...(opts.headers||{}) }})
+  .then(async r => { if (!r.ok) throw new Error((await r.json()).detail || r.status); return r.json(); });
+
+function login() { try { localStorage.setItem("gui_token", $("tok").value.trim()); } catch(e) {} boot(); }
+
+async function boot() {
+  try { ME = await api("/api/me"); } catch(e) { $("login").classList.remove("hide"); return; }
+  $("login").classList.add("hide");
+  $("who").textContent = ME.account;
+  document.title = $("title").textContent = "{{ gui_title | default('Console di lavorazione') }}";
+  const tabs = [];
+  if (ME.capabilities.includes("dashboard"))      tabs.push(["dashboard","Dashboard"]);
+  if (ME.capabilities.includes("form.submit"))    tabs.push(["form","Richieste"]);
+  if (ME.capabilities.includes("outbox.read"))    tabs.push(["outbox","Approvazioni"]);
+  if (ME.free_chat)                               tabs.push(["chat","Chat"]);
+  $("tabs").innerHTML = tabs.map(([k,l]) => `<button id="btn-${k}" onclick="show('${k}')">${l}</button>`).join("");
+  if (tabs.length) show(tabs[0][0]);
+  const sel = $("formSel");
+  sel.innerHTML = Object.entries(ME.forms).map(([k,l]) => `<option value="${k}">${l}</option>`).join("");
+}
+
+function show(tab) {
+  for (const s of document.querySelectorAll("main section")) s.classList.add("hide");
+  for (const b of document.querySelectorAll("nav button")) b.classList.remove("active");
+  $("tab-"+tab).classList.remove("hide"); $("btn-"+tab).classList.add("active");
+  if (tab === "dashboard") refreshDash();
+  if (tab === "outbox") refreshOutbox();
+}
+
+async function refreshDash() {
+  const d = await api("/api/dashboard");
+  $("state").textContent = d.state || "(vuoto)";
+  $("tasks").textContent = d.tasks.map(t => `${t.task_id}  ${t.status}  ${(t.output||t.error||"").slice(0,120)}`).join("\n") || "(nessun task)";
+}
+
+async function submitForm() {
+  const fid = $("formSel").value;
+  const values = {};
+  for (const inp of document.querySelectorAll("#formFields input")) values[inp.name] = inp.value;
+  $("formOut").textContent = "…";
+  try { const r = await api(`/api/form/${fid}`, {method:"POST", body: JSON.stringify({values})});
+        $("formOut").textContent = r.output || r.error || JSON.stringify(r); }
+  catch(e) { $("formOut").textContent = "Errore: " + e.message; }
+}
+
+async function refreshOutbox() {
+  const d = await api("/api/outbox");
+  $("proposals").innerHTML = d.proposals.length ? d.proposals.map(p =>
+    `<div class="card"><strong>${p.title}</strong><pre>${p.body.replace(/</g,"&lt;")}</pre>
+     ${ME.capabilities.includes("outbox.approve") ? `<button class="act" onclick="approve(${p.id})">Approva</button>` : ""}</div>`
+  ).join("") : "<p>(nessuna proposta in attesa)</p>";
+}
+
+async function approve(id) {
+  await api(`/api/outbox/${id}/approve`, {method:"POST"});
+  refreshOutbox();
+}
+
+async function sendChat() {
+  const prompt = $("chatIn").value.trim(); if (!prompt) return;
+  $("chatLog").textContent += "\n> " + prompt + "\n…";
+  $("chatIn").value = "";
+  try { const r = await api("/api/task", {method:"POST", body: JSON.stringify({prompt, resume: SESSION})});
+        SESSION = r.session_id || SESSION;
+        $("chatLog").textContent = $("chatLog").textContent.replace(/…$/, r.output || r.error || "(nessun output)"); }
+  catch(e) { $("chatLog").textContent = $("chatLog").textContent.replace(/…$/, "Errore: " + e.message); }
+}
+
+// I campi del form si costruiscono dai nomi: il backend valida comunque (fonte di verita').
+document.addEventListener("change", async e => {
+  if (e.target.id !== "formSel") return; buildFields();
+});
+async function buildFields() {
+  // Minimale: un input per campo; le regex di validazione vivono SOLO nel backend.
+  const known = {{ form_fields_json | default("{'report-settimanale': ['settimana', 'area']}") }};
+  const fields = known[$("formSel").value] || [];
+  $("formFields").innerHTML = fields.map(f => `<p>${f}<input name="${f}"></p>`).join("");
+}
+boot(); setTimeout(buildFields, 300);
+</script>
+</body>
+</html>

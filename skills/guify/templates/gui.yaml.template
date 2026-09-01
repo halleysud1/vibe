@@ -1,0 +1,47 @@
+# {{ gui.name }} — manifesto GUI (output dell'intervista d'ingresso di /guify)
+gui:
+  name: "{{ gui.name }}"
+  workspace: "{{ gui.workspace }}"          # la lavorazione che questa GUI distribuisce
+  surface: {{ gui.surface }}                # widget | artifact | standalone
+  engine: {{ gui.engine | default('sdk') }} # sdk (sessioni Claude headless, abbonamento) | agentos (REST agentify)
+  direction: {{ gui.direction | default('bidirectional') }}
+
+use_cases:
+  {% for uc in gui.use_cases %}- "{{ uc }}"
+  {% endfor %}
+
+users:
+  # ruolo -> capabilities. DEFAULT-DENY: cio' che non e' elencato e' negato (rbac.py).
+  roles:
+    admin:    [chat, task.launch, task.status, form.submit, outbox.read, outbox.approve, dashboard]
+    operator: [task.launch, task.status, form.submit, outbox.read, dashboard]
+    viewer:   [dashboard, task.status]
+  # account -> ruolo. L'auth e' della GUI (GUI_ACCOUNTS_FILE / env), MAI il token Claude.
+  accounts:
+    {% for u, r in gui.accounts.items() %}{{ u }}: {{ r }}
+    {% endfor %}
+
+chat:
+  # Chat libera = decisione esplicita dell'utente (regola G1 in SKILL.md).
+  # Chi non e' in questi ruoli usa i form strutturati (prompts.py).
+  free_chat_roles: [admin]
+
+session:
+  # Permessi della sessione Claude sotto la GUI (engine sdk). Una GUI esposta
+  # non monta MAI una sessione full-access (regola G5).
+  cwd: "{{ session.cwd }}"
+  allowed_tools: {{ session.allowed_tools | default('["Read", "Grep", "Glob", "Bash(git status)", "Bash(git diff *)"]') }}
+  permission_mode: {{ session.permission_mode | default('"default"') }}
+  system_prompt_file: {{ session.system_prompt_file | default('null') }}
+
+agentos:
+  # Solo per engine agentos: dove risponde l'agente agentify.
+  base_url: {{ agentos.base_url | default('"http://localhost:7777"') }}
+  ops_dir: {{ agentos.ops_dir | default('"docs/ops"') }}   # OUTBOX.md, STATE.md, AUDIT.md
+
+boundaries_hard:
+  {% for b in gui.boundaries %}- "{{ b }}"
+  {% endfor %}
+
+audit:
+  file: logs/gui_audit.log

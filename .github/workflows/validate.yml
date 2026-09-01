@@ -76,6 +76,17 @@ jobs:
             "skills/deep-research/references/funnel_tuning.md" \
             "skills/deep-research/templates/fullauto/pipeline.py.template" \
             "skills/deep-research/templates/fullauto/WIRING.md" \
+            "skills/guify/SKILL.md" \
+            "skills/guify/templates/gui.yaml.template" \
+            "skills/guify/templates/standalone/app.py.template" \
+            "skills/guify/templates/standalone/engine_sdk.py.template" \
+            "skills/guify/templates/standalone/engine_agentos.py.template" \
+            "skills/guify/templates/standalone/rbac.py.template" \
+            "skills/guify/templates/standalone/prompts.py.template" \
+            "skills/guify/templates/standalone/index.html.template" \
+            "skills/guify/templates/standalone/test_rbac.py.template" \
+            "skills/guify/templates/artifact/PATTERNS.md" \
+            "skills/guify/templates/widget/PATTERNS.md" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \

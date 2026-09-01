@@ -1,0 +1,61 @@
+"""Test deterministici del RBAC della GUI (no API calls, no LLM).
+
+Coprono le regole G1/G2: default-deny, capability per ruolo, free-chat
+solo ai ruoli concessi, token ignoti respinti.
+
+NOTA: file generico — nessun placeholder. Copialo as-is nel target.
+"""
+import pytest
+
+import gui.server.rbac as rbac
+
+
+@pytest.fixture(autouse=True)
+def fixed_rbac(monkeypatch):
+    monkeypatch.setattr(rbac, "ROLES", {
+        "admin": ["chat", "task.launch", "form.submit", "outbox.read",
+                  "outbox.approve", "dashboard", "task.status"],
+        "operator": ["task.launch", "form.submit", "outbox.read",
+                     "dashboard", "task.status"],
+        "viewer": ["dashboard", "task.status"],
+    })
+    monkeypatch.setattr(rbac, "ACCOUNTS",
+                        {"alice": "admin", "bob": "operator", "carla": "viewer"})
+    monkeypatch.setattr(rbac, "FREE_CHAT_ROLES", ["admin"])
+    monkeypatch.setattr(rbac, "_TOKENS", {"tok-a": "alice", "tok-c": "carla"})
+
+
+def test_default_deny_unknown_capability():
+    assert "deploy" not in rbac.capabilities_of("alice")
+
+
+def test_viewer_cannot_approve():
+    assert "outbox.approve" not in rbac.capabilities_of("carla")
+    assert "outbox.approve" in rbac.capabilities_of("alice")
+
+
+def test_free_chat_only_for_granted_roles():
+    assert rbac.can_free_chat("alice") is True
+    assert rbac.can_free_chat("bob") is False    # ha task.launch ma NON la chat
+    assert rbac.can_free_chat("carla") is False
+
+
+def test_unknown_role_has_no_capabilities(monkeypatch):
+    monkeypatch.setitem(rbac.ACCOUNTS, "mallory", "ghost-role")
+    assert rbac.capabilities_of("mallory") == []
+
+
+def test_unknown_token_rejected():
+    class FakeRequest:
+        headers = {"authorization": "Bearer wrong-token"}
+    with pytest.raises(Exception):
+        rbac.current_account(FakeRequest())
+
+
+def test_require_denies_and_allows():
+    from fastapi import HTTPException
+    check = rbac.require("outbox.approve")
+    assert check(account="alice") == "alice"
+    with pytest.raises(HTTPException) as e:
+        check(account="carla")
+    assert e.value.status_code == 403

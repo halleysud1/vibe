@@ -1,0 +1,58 @@
+"""Form -> prompt strutturati (regola G1 di /guify).
+
+Per gli utenti che non hanno la chat libera, l'unico modo di comandare la
+sessione e' un form DICHIARATO qui: campi tipizzati, validazione, template di
+prompt fisso. L'utente riempie i campi; il prompt lo compone il codice.
+Cosi' l'input di un terzo non puo' diventare un'istruzione arbitraria a un
+modello con tool (prompt injection by design).
+
+CUSTOMIZE durante lo scaffolding: il placeholder `form_definitions` — un form
+per ogni caso d'uso emerso nell'intervista. Esempio incluso come default.
+"""
+from __future__ import annotations
+
+import re
+
+# form_id -> definizione. "fields": nome -> regex di validazione (fullmatch).
+# "template": prompt con segnaposto {campo}. Nessun campo libero multiriga
+# nei form esposti ai terzi, salvo decisione esplicita dell'utente.
+FORMS: dict[str, dict] = {{ form_definitions | default("""{
+    "report-settimanale": {
+        "label": "Genera il report settimanale",
+        "fields": {
+            "settimana": r"20\\d{2}-W\\d{2}",
+            "area": r"[A-Za-z0-9 _-]{1,40}",
+        },
+        "template": (
+            "Genera il report settimanale per la settimana {settimana}, "
+            "area '{area}', seguendo la skill di progetto per i report. "
+            "Scrivi l'output in reports/ e riassumi qui le 3 evidenze principali."
+        ),
+    },
+}""") }}
+
+
+class FormError(ValueError):
+    pass
+
+
+def available_forms() -> dict[str, str]:
+    return {fid: f.get("label", fid) for fid, f in FORMS.items()}
+
+
+def render_prompt(form_id: str, values: dict[str, str]) -> str:
+    """Valida i campi contro le regex dichiarate e compone il prompt."""
+    form = FORMS.get(form_id)
+    if not form:
+        raise FormError(f"form sconosciuto: {form_id}")
+    fields: dict[str, str] = form["fields"]
+    unknown = set(values) - set(fields)
+    if unknown:
+        raise FormError(f"campi non dichiarati: {sorted(unknown)}")
+    clean = {}
+    for name, pattern in fields.items():
+        v = str(values.get(name, "")).strip()
+        if not re.fullmatch(pattern, v):
+            raise FormError(f"campo '{name}' non valido (atteso: {pattern})")
+        clean[name] = v
+    return form["template"].format(**clean)

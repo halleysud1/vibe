@@ -1,7 +1,7 @@
 {
   "name": "vibecoding",
   "version": "5.0.0",
-  "description": "Tiene insieme un progetto nel tempo, che e' la parte che un modello forte non fa da solo: intervista il dominio prima di costruirci sopra, instrada ogni regola nella sede dove verra' riletta (CLAUDE.md / PROJECT_SPEC / SKILL), migra invece di affiancare e lascia la documentazione allineata al codice a fine change. In piu': agentify per agenti standalone con tool-guard e autonomy gates, deep-research per ricerche arbitrate sulla fonte primaria, md-to-pdf per la consegna.",
+  "description": "Tiene insieme un progetto nel tempo, che e' la parte che un modello forte non fa da solo: intervista il dominio prima di costruirci sopra, instrada ogni regola nella sede dove verra' riletta (CLAUDE.md / PROJECT_SPEC / SKILL), migra invece di affiancare e lascia la documentazione allineata al codice a fine change. In piu': agentify per agenti standalone con tool-guard e autonomy gates, guify per distribuire una lavorazione come interfaccia grafica (widget, artifact o app standalone con RBAC), deep-research per ricerche arbitrate sulla fonte primaria, md-to-pdf per la consegna.",
   "author": {
     "name": "Gianluigi — Halley Sud SRL",
     "url": "https://github.com/halleysud1"
@@ -41,6 +41,7 @@
     "./skills/agentify/",
     "./skills/skill-bootstrap/",
     "./skills/md-to-pdf/",
-    "./skills/deep-research/"
+    "./skills/deep-research/",
+    "./skills/guify/"
   ]
 }

@@ -570,6 +570,9 @@ chat consumer-facing. Pattern raccomandato: **Telegram**.
 Pattern Agno: `agno.os.interfaces.{telegram, slack, whatsapp, a2a, agui}`. Lo scaffolding copre
 Telegram; le altre interface seguono lo stesso schema (sostituibili dall'utente).
 
+Per una **GUI web** sopra l'agente (console di controllo, dashboard, form,
+approvazioni OUTBOX) → skill `guify` con engine `agentos`: non duplicare qui.
+
 **Sicurezza & permessi** (correlato al boundary "MAI output verso esterni"): chi può
 scrivere al bot accede all'agente. Due livelli:
 - **Whitelist** (base, on/off): `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling

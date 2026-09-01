@@ -1,0 +1,79 @@
+"""Engine 'agentos': la GUI parla con un agente agentify gia' scaffoldato.
+
+Due canali:
+- REST di AgentOS (base_url dal manifesto) per lanciare run e chattare
+- i file ops di agentify (docs/ops/OUTBOX.md, STATE.md) per proposte e stato
+
+L'approvazione di una proposta NON esegue nulla qui: marca la entry APPROVED
+in OUTBOX (con chi/quando) e sara' il run successivo dell'agente — o un umano —
+ad applicarla. La GUI non scavalca il propose-and-confirm di agentify.
+
+NOTA: file generico — nessun placeholder. Copialo as-is nel target.
+"""
+from __future__ import annotations
+
+import datetime
+import re
+from pathlib import Path
+
+import httpx
+
+from .rbac import MANIFEST
+
+_CFG = MANIFEST.get("agentos", {})
+BASE_URL = _CFG.get("base_url", "http://localhost:7777")
+OPS_DIR = Path(MANIFEST["gui"].get("workspace", ".")) / _CFG.get("ops_dir", "docs/ops")
+OUTBOX = OPS_DIR / "OUTBOX.md"
+STATE = OPS_DIR / "STATE.md"
+
+_ENTRY_RE = re.compile(r"^## (?P<ts>\S+) — proposta[^\n]*$", re.M)
+
+
+async def run_task(prompt: str, session_id: str | None = None) -> dict:
+    async with httpx.AsyncClient(base_url=BASE_URL, timeout=300) as client:
+        r = await client.post("/teams/default/runs",
+                              json={"message": prompt, "session_id": session_id})
+        r.raise_for_status()
+        return r.json()
+
+
+def read_state() -> str:
+    return STATE.read_text(encoding="utf-8") if STATE.exists() else "(nessuno STATE.md)"
+
+
+def list_proposals() -> list[dict]:
+    """Ogni entry PENDING di OUTBOX, col suo testo integrale (diff compreso):
+    chi approva deve vedere il contenuto reale, non un titolo (regola G4)."""
+    if not OUTBOX.exists():
+        return []
+    text = OUTBOX.read_text(encoding="utf-8")
+    starts = [m.start() for m in _ENTRY_RE.finditer(text)] + [len(text)]
+    out = []
+    for i, s in enumerate(starts[:-1]):
+        body = text[s:starts[i + 1]]
+        out.append({
+            "id": i,
+            "title": body.splitlines()[0].removeprefix("## ").strip(),
+            "pending": "stato: PENDING" in body,
+            "body": body,
+        })
+    return [p for p in out if p["pending"]]
+
+
+def approve_proposal(proposal_id: int, account: str) -> bool:
+    """PENDING -> APPROVED sulla singola entry, firmato e datato."""
+    if not OUTBOX.exists():
+        return False
+    text = OUTBOX.read_text(encoding="utf-8")
+    starts = [m.start() for m in _ENTRY_RE.finditer(text)] + [len(text)]
+    if proposal_id >= len(starts) - 1:
+        return False
+    s, e = starts[proposal_id], starts[proposal_id + 1]
+    body = text[s:e]
+    if "stato: PENDING" not in body:
+        return False
+    ts = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    body = body.replace("stato: PENDING",
+                        f"stato: APPROVED (da {account}, {ts} via GUI)", 1)
+    OUTBOX.write_text(text[:s] + body + text[e:], encoding="utf-8")
+    return True
