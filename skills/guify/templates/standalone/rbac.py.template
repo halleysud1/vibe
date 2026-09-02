@@ -1,0 +1,72 @@
+"""RBAC della GUI: ruoli -> capabilities, default-deny (regola G2 di /guify).
+
+L'autorizzazione sta QUI, a livello endpoint — mai nel system prompt della
+sessione sotto: un LLM con tool non si vincola a istruzioni testuali, e la
+GUI e' esattamente il posto dove un enforcement meccanico e' possibile.
+
+Auth della GUI: token opachi per account (env GUI_TOKENS oppure file
+indicato da GUI_TOKENS_FILE, formato "token=account" per riga). Il token
+OAuth Claude / le API key NON c'entrano con questa auth e non devono mai
+raggiungere il browser (regola G3).
+
+NOTA: file generico — nessun placeholder. Copialo as-is nel target.
+"""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import yaml
+from fastapi import Depends, HTTPException, Request
+
+GUI_ROOT = Path(__file__).resolve().parents[1]
+MANIFEST = yaml.safe_load((GUI_ROOT / "gui.yaml").read_text(encoding="utf-8"))
+
+ROLES: dict[str, list[str]] = MANIFEST["users"]["roles"]
+ACCOUNTS: dict[str, str] = MANIFEST["users"]["accounts"] or {}
+FREE_CHAT_ROLES: list[str] = MANIFEST.get("chat", {}).get("free_chat_roles", [])
+
+
+def _load_tokens() -> dict[str, str]:
+    """token -> account. Da env GUI_TOKENS ("tok1=alice,tok2=bob") o file."""
+    raw = os.getenv("GUI_TOKENS", "")
+    pairs = [p for p in raw.split(",") if "=" in p]
+    tf = os.getenv("GUI_TOKENS_FILE")
+    if tf and Path(tf).exists():
+        pairs += [l for l in Path(tf).read_text(encoding="utf-8").splitlines()
+                  if "=" in l and not l.startswith("#")]
+    return dict(p.split("=", 1) for p in pairs)
+
+
+_TOKENS = _load_tokens()
+
+
+def current_account(request: Request) -> str:
+    tok = (request.headers.get("authorization") or "").removeprefix("Bearer ").strip()
+    account = _TOKENS.get(tok)
+    if not account or account not in ACCOUNTS:
+        raise HTTPException(401, "token non valido")
+    return account
+
+
+def role_of(account: str) -> str:
+    return ACCOUNTS[account]
+
+
+def capabilities_of(account: str) -> list[str]:
+    return ROLES.get(role_of(account), [])  # ruolo ignoto -> nessuna capability
+
+
+def require(capability: str):
+    """Dependency FastAPI: default-deny sulla capability richiesta."""
+    def _check(account: str = Depends(current_account)) -> str:
+        if capability not in capabilities_of(account):
+            raise HTTPException(
+                403, f"'{role_of(account)}' non ha la capability '{capability}'")
+        return account
+    return _check
+
+
+def can_free_chat(account: str) -> bool:
+    """Regola G1: chat libera solo ai ruoli esplicitamente concessi."""
+    return role_of(account) in FREE_CHAT_ROLES and "chat" in capabilities_of(account)

@@ -1,5 +1,241 @@
 # Changelog
 
+## [5.0.0] - 2026-07-27
+
+Release di hardening: tutti i difetti corretti qui erano **comportamentali** —
+cose che facevano lavorare peggio l'agente, non refusi. Nessuna skill rimossa.
+
+### Added — intervista d'ingresso + gate di rotta all'invocazione di agentify
+
+Appena agentify viene invocata — prima della discovery — parte SEMPRE
+un'**intervista sui casi d'uso** via `AskUserQuestion` (cosa deve fare
+l'agente con esempi concreti, chi lo usa, dove gira, chi paga i modelli e se
+serve più di un vendor), anche quando la richiesta sembra già chiara: la rotta
+dipende dai casi d'uso, e assumerli è il modo tipico di scaffoldare la cosa
+sbagliata. Le risposte confluiscono nel manifesto (`route.use_cases`) e fanno
+da input alla Fase 1, che non le richiede. Sulla base delle risposte il gate
+decide fra quattro rotte:
+abbonamento Claude + automazione interna → **nativo Claude Code** (routine,
+workflow, subagent); abbonamento Claude + agente standalone self-hosted
+Anthropic-only → **Claude Agent SDK con l'auth dell'abbonamento** (hosting
+libero a prezzo fisso, nessun costo a token); API Anthropic a token senza
+infrastruttura → **Claude Managed Agents**; chiavi API esterne multi-vendor
+(Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token con hosting
+libero (PC, server locale, cloud proprio) → **agentify**. Il moat dichiarato
+di agentify si riduce a uno ed è netto: **multi-modello per ruolo** — se
+l'agente può essere Anthropic-only, l'abbonamento vince sul costo e la skill
+si ferma dicendolo. La rotta scelta si registra nel manifesto (`route.choice`
++ `route.reason`), con i limiti onesti della rotta SDK+abbonamento (quota
+condivisa con l'uso interattivo, termini d'uso per servizi esposti a terzi).
+
+### Added — nuova skill `guify`: distribuisci una lavorazione come interfaccia grafica
+
+Una lavorazione Claude Code funziona per chi usa Claude Code; per tutti gli
+altri si distribuisce come **GUI** — invece di consegnare la cartella con le
+skill, si consegna un'interfaccia dove il lavoro si lancia, si osserva e si
+approva senza vedere Claude. Nata dall'intervista con l'utente (casi d'uso:
+console di controllo, dashboard, form→prompt, chat custom; utenti: colleghi e
+terzi; direzione: bidirezionale).
+
+- **Gate multi-superficie** (stesso pattern dell'intervista d'ingresso di
+  agentify): widget in-chat via `sendPrompt()` per chi ha la sessione aperta;
+  **artifact con capabilities** per colleghi con account Claude (stato
+  condiviso, commenti e salvataggi che svegliano la sessione); **app
+  standalone self-hosted** per chi non ha account — FastAPI con due engine
+  intercambiabili: `sdk` (sessioni Claude headless via Agent SDK,
+  **abbonamento a prezzo fisso**) o `agentos` (REST dell'agente agentify +
+  OUTBOX). Se i casi d'uso sono misti si sceglie la superficie della persona
+  meno privilegiata.
+- **Regole di sicurezza G1-G6**, enforcement meccanico come il tool-guard:
+  per i terzi **form→prompt strutturati di default** (chat libera collegata a
+  una sessione con tool = prompt injection by design; si concede per decisione
+  esplicita, a ruoli elencati, con la sessione a permessi ridotti); **RBAC a
+  livello endpoint default-deny** (mai nel system prompt); token Claude solo
+  server-side; approvazioni sul **diff reale**; sessione sotto la GUI con
+  `allowed_tools`/`permission_mode` dichiarati nel manifesto; audit
+  append-only.
+- **Template**: manifesto `gui.yaml`, backend FastAPI (task/form/outbox/
+  dashboard/chat), adapter `engine_sdk` (claude-agent-sdk con fallback CLI
+  headless) e `engine_agentos` (REST + approvazione PENDING→APPROVED firmata
+  in OUTBOX, senza scavalcare il propose-and-confirm), `rbac.py`, `prompts.py`
+  (form dichiarati con validazione regex), frontend single-file con tab per
+  capability, `test_rbac.py` (default-deny, free-chat gating — no API calls).
+- **PATTERNS.md** per le superfici leggere (widget e artifact): pattern, non
+  scaffold — la superficie pesante per un caso leggero è l'anti-pattern G-A5.
+
+### Changed — la tabella dei modelli si costruisce a ogni lancio
+
+Rimossa la tabella statica dei default modello dalla Fase 3 (stesso principio
+della rimozione dello "Stack default" da methodology: una tabella scritta nella
+skill diventa il default che nessuno rimette in discussione, e i nomi/prezzi
+dei modelli invecchiano in mesi). Restano i **requisiti di capability per
+ruolo** (la parte stabile); id, prezzi e provider si raccolgono con una
+**ricognizione al momento del lancio** — chiedendo all'utente quali chiavi ha e
+verificando i listini correnti, mai dalla memoria del modello — e si datano nel
+manifesto (`models.surveyed_at`). Il verdetto resta del bench e di `eval_coder`
+(anti-pattern A4).
+
+### Fixed — `_models.py`: `budget_tokens` rimosso dall'API Claude (errore 400)
+
+Il factory traduceva il reasoning per i modelli `claude-*` in
+`{"thinking": {"type": "enabled", "budget_tokens": N}}`: sui Claude 5-family la
+shape è **rifiutata con un 400**, quindi ogni delega dell'Orchestrator con un
+livello di reasoning verso un ruolo Claude moriva a runtime. Ora: thinking
+**adattivo** + **effort** (`low`/`medium`/`xhigh` — `high` interno mappa su
+`xhigh`, il livello raccomandato per l'agentic coding), mai `disabled`, mai
+`budget_tokens`. Il thinking budget a token resta solo per Gemini.
+
+### Fixed — i path degli script erano sbagliati per chiunque installi il plugin
+
+Nessuna skill usava `${CLAUDE_PLUGIN_ROOT}`: 15 invocazioni su 3 skill puntavano
+a `skills/…` o `.claude/skills/…`, path che esistono solo se la skill è copiata
+dentro il progetto. Installato da marketplace il plugin vive altrove, quindi la
+**Fase 0 di `agentify` falliva al primo comando** — e il danno non è l'errore, è
+che poi il modello improvvisa (cerca il file, o riscrive lo script a mano).
+
+- `agentify`, `deep-research`, `md-to-pdf`: tutte le invocazioni passano da
+  `${CLAUDE_PLUGIN_ROOT}`; idem il docstring di `discover.py` e il riferimento
+  alla cartella dei template.
+- `fullauto`: `DEEPRESEARCH_SCRIPT` ora punta di default a `scripts/…` **nel
+  progetto** (la destinazione che `WIRING.md` prescrive), non alla skill; WIRING
+  dichiara la sorgente come `$CLAUDE_PLUGIN_ROOT`.
+- Nuovo check in CI che fallisce su qualunque invocazione non prefissata.
+
+### Changed (breaking) — il propose-and-confirm del coding-agent si sposta sul diff
+
+`edit: propose` era il default. Ma una `propose` **non viene eseguita**: nessun
+edit atterrava, `verify()` restituiva sempre lo stesso rosso e il ruolo
+ri-proponeva fino a churn o kill-switch. Il ciclo `edita → verifica → itera fino
+a verde`, che la skill dichiara obbligatorio, era **strutturalmente impossibile**
+con la configurazione di default. In più in OUTBOX finiva il payload della call
+troncato a 800 caratteri: non revisionabile e non applicabile.
+
+- `edit` / `write` / `apply_patch` passano a `allow` nel profilo di default. Il
+  contenimento del coder è **strutturale** — solo branch `agent/*`, niente push
+  né merge, checkpoint reversibile, path sensibili negati dalla baseline — non
+  un permesso.
+- Il gate umano resta, al livello giusto: `git_propose_diff` con il **diff
+  reale** e il tetto di `max_propose_diff_lines`.
+- Per i ruoli non isolati su branch (es. `high-level-ops`) la raccomandazione è
+  invariata: `write` ristretto alla output dir, `"*": propose`.
+
+**Impatto**: chi ri-scaffolda un agente ottiene il nuovo profilo. Chi vuole il
+comportamento precedente lo dichiara nel manifesto (`tools.permissions.edit:
+propose`) — sapendo che il verify loop non chiuderà.
+
+### Fixed — il kill-switch tagliava il paracadute
+
+Il contatore incrementava su ogni tool call e al superamento negava tutto,
+`gitops` e `verify` compresi. L'istruzione di recovery del ruolo («verify rosso
+per N cicli → `git_revert_to_checkpoint()`») veniva quindi **negata proprio
+quando serviva**: worktree mezzo editato, nessun modo di ripulirlo.
+
+- Budget di grazia (`recovery_grace`, default 20) sui soli tool che non scrivono
+  codice: `read`, `glob`, `grep`, `repomap`, `context`, `verify`, `gitops`.
+- Il messaggio di DENY dice esplicitamente cosa resta possibile.
+
+### Fixed — il churn detector puniva l'iterazione legittima
+
+`_edit_counts` era monotono per tutta la run: con `churn_limit` 5, un refactor su
+più batch verificati che tocca lo stesso modulo core scattava — sul file su cui
+il task insiste per definizione — e negava l'edit necessario a riparare un verify
+rosso. La metrica confondeva *molti edit* con *nessun progresso*.
+
+- Nuovo `GUARD.mark_progress()`, chiamato da `verify()` a ogni VERDE: azzera i
+  contatori. Si contano gli edit **dall'ultimo verde**, non dall'inizio della run.
+- Il messaggio di DENY dichiara che il contatore riparte al primo verde.
+
+### Fixed — un `TODO` dentro il system prompt, invisibile al controllo previsto
+
+`role_coding_agent` conteneva `# TODO durante scaffolding: descrivere il
+perimetro…` **dentro la stringa delle instructions**: se lo scaffolding lo
+saltava, il coder partiva con "TODO: descrivi il perimetro" come definizione del
+proprio scope. E non essendo un `{{ }}`, il grep prescritto dall'anti-pattern A6
+non lo intercettava.
+
+- I punti che finiscono nel system prompt sono ora placeholder veri:
+  `{{ role_perimeter }}`, `{{ role_task }}`, `{{ ops_profiles }}`,
+  `{{ orchestrator_flows }}`; la guida su cosa scriverci sta in un commento
+  Python **fuori** dalla stringa.
+- A6 riscritto: si grep-pano entrambe le forme. Nuovo check in CI.
+- `CODING_AGENT_PROMPT` non fa più `read_text` nudo: se il file manca, errore
+  parlante invece di stack trace all'import.
+
+### Fixed — il gate anti-degrado era silenziosamente inerte su Windows
+
+La definition-of-done di default usava `pytest … | tail -1`: con `shell=True` su
+Windows il check fallisce sempre e, essendo `required: false`, falliva *in
+silenzio*. Nessuna baseline si stabiliva mai, quindi la metrica non-decrescente —
+l'intero meccanismo 4.2.0 contro il degrado — non girava. Un gate inerte è peggio
+di nessun gate: ti credi coperto.
+
+- Niente pipe POSIX nei comandi di default; il check con metrica è `required: true`.
+- `metric_pattern` **obbligatorio** (regex con gruppo di cattura). Prima si
+  prendeva "l'ultimo numero dell'output": bastava un `in 3.42s` nella coda per
+  fissare la baseline sul tempo di esecuzione, e da lì qualunque coverage passava.
+
+### Changed — `/vibecoding:init` è un entry point sottile
+
+Comando e skill non erano solo duplicati (300 righe contro 291): **divergevano**.
+`init.md` aveva il detect del contesto e la chiusura con journal/memory che la
+skill non aveva; `skill-bootstrap` aveva la verifica finale che il comando non
+aveva; la regola sulla `description` era formulata diversamente nei due file.
+Stesso task, due percorsi, artefatti diversi — su un flusso che scrive file nel
+progetto dell'utente.
+
+- `init.md` scende a ~40 righe: invoca la skill e basta.
+- `skill-bootstrap` assorbe Fase 0 (detect), l'anti-overfit in D3, D6 (strategia
+  di validazione) e D7 (verifica + consegna + `decisions.log` + memory).
+- CONTRIBUTING dichiara il vincolo: non reintrodurre il protocollo nel comando.
+
+### Changed — niente ricette POSIX nelle skill
+
+`change-request` Fase 0 prescriveva `ls -la`, `find … | head -30`,
+`test -f … && echo`; `init.md` usava `ls … 2>/dev/null` e `mkdir -p`. Su
+PowerShell falliscono, e il modello parte con tre o quattro comandi rotti proprio
+mentre si costruisce il quadro del progetto. Ora la skill dice **cosa** cercare e
+lascia all'agente i suoi strumenti di ricerca.
+
+### Changed — `change-request` non si ferma più sui repo senza mappa docs
+
+Fase 0.3 interrompeva il protocollo se mancava `docs/README.md`. È la maggioranza
+dei repo reali: nella pratica o il protocollo non parte mai, o si impara che i
+cancelli di questa skill si scavalcano — Fase 5 compresa, che è quella che conta.
+Ora l'Impact Analysis procede sui documenti che trova, dichiarando cosa non ha
+potuto verificare, e la creazione della mappa entra fra le voci di Fase 5. Resta
+un unico stop: CR strategic **e** nessun documento autoritativo.
+
+### Removed — la tabella "Stack default" da `methodology`
+
+Prescriveva FastAPI, React+Tailwind, JWT+bcrypt. Dieci righe sotto, lo stesso
+file elenca fra gli anti-pattern «Specificare framework nel prompt → depotenzia
+il modello». Il modello leggeva entrambi e ancorava sulla tabella, perché è
+concreta: si otteneva la scelta di stack che il principio dichiarava dannosa. Al
+suo posto una sezione che spiega perché non c'è un default.
+
+### Changed — description come budget, non come spazio libero
+
+Le description stanno **sempre** in contesto. `deep-research` ne occupava 956
+caratteri con trigger larghi ("scouting", "benchmark di soluzioni") davanti a un
+motore da 10-40 minuti a pagamento: un falso positivo costa caro. `methodology`
+aveva invece un trigger vago e sotto-attivava proprio la regola anti-overfit.
+
+- Tutte riscritte con trigger espliciti; totale da 3.535 a 2.954 caratteri.
+- Nuovo check in CI: tetto di 600 caratteri per skill, con report del totale.
+
+### Added — CI che intercetta questi difetti
+
+`compileall` sugli script, path via `${CLAUDE_PLUGIN_ROOT}`, nessun segnaposto in
+prosa nei prompt dei ruoli, budget delle description.
+
+### Added — test del guard per i nuovi comportamenti
+
+`test_kill_switch_grace_allows_diagnosis_and_rollback` e
+`test_churn_resets_on_verified_progress`; `test_kill_switch` riscritto sulle
+scritture (il vecchio caso passava per grazia, come deve).
+
+---
+
 ## [4.5.0] - 2026-07-26
 
 ### Changed — `deep-research`: il funnel diventa ricorsivo

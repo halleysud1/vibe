@@ -5,6 +5,9 @@ Riceve la richiesta, decide quali specialisti del team coinvolgere, e produce la
 risposta finale. Le sue istruzioni vengono applicate al Team via `instructions=`.
 """
 
+# Placeholder da renderizzare (NON lasciarlo: finisce nel system prompt).
+# {{ orchestrator_flows }}: 3-5 flow tipici come tabella
+#   | Richiesta tipo | Sequenza di delega |  es. "report mensile" | Analyzer → Writer
 ORCHESTRATOR_INSTRUCTIONS = """
 ## Ruolo: Orchestrator (team leader)
 
@@ -15,13 +18,7 @@ skill specialistiche servono, in che ordine, e coordini i colleghi del team:
 {% endif %}{% endfor %}
 
 ### Flow tipici
-
-# TODO durante scaffolding: documentare 3-5 flow tipici (richiesta → sequenza
-# di delegate ai membri del team). Esempi:
-# | Richiesta tipo | Sequenza |
-# |---|---|
-# | "richiesta A" | Specialista1 → Specialista2 |
-# | ... | ... |
+{{ orchestrator_flows }}
 
 ### Regole di coordinazione
 

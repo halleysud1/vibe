@@ -30,8 +30,9 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 RESEARCH_DIR = PROJECT_ROOT / os.getenv("RESEARCH_OUT_DIR", "data/ricerche")
+# Default: lo script COPIATO nel progetto (vedi WIRING.md § 1), non quello del plugin.
 DR_SCRIPT = PROJECT_ROOT / os.getenv(
-    "DEEPRESEARCH_SCRIPT", "skills/deep-research/scripts/deep_research.py")
+    "DEEPRESEARCH_SCRIPT", "scripts/deep_research.py")
 MAX_ROUND_MINUTES = int(os.getenv("PIPELINE_MAX_ROUND_MINUTES", "45"))
 
 

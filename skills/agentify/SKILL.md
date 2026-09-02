@@ -1,6 +1,6 @@
 ---
 name: agentify
-description: "Protocollo portabile per trasformare un progetto Claude Code (con skill SKILL.md, MCP server, scripts) in un agente standalone specializzato. 6 fasi — Discovery → Identity Interview → Engine Selection → Roles & Models → Tool Layer & Autonomy → Scaffolding → Validation. Engine-agnostic (Agno+AgentOS default). Include ruoli tool-empowered: coding-agent con harness completo (tool editing/shell/LSP derivati da opencode + loop di verifica su definition-of-done, checkpoint/rollback git, scout a contesto separato, repo map, eval su golden task), high-level-ops schedulato con autonomy gates L0-L5, tool-guard, runbook, audit trail, propose-and-confirm."
+description: "Trasforma un progetto Claude Code (skill, MCP server, scripts) in un agente standalone specializzato: discovery, intervista d'identita', scelta engine (Agno+AgentOS di default), ruoli multi-modello, tool layer con autonomy gates L0-L5 e tool-guard, scaffolding, validazione. Include il ruolo coding-agent con harness completo — verify loop sulla definition-of-done, checkpoint/rollback git, scout a contesto separato, eval su golden task. Usala quando l'agente deve girare SENZA Claude Code: utenti terzi, servizio always-on, multi-modello per costo."
 ---
 
 # /agentify — Trasforma un progetto Claude Code in agente standalone
@@ -34,26 +34,68 @@ La skill è **portabile** — funziona su qualsiasi progetto Claude Code in cui 
 
 **Non usarlo** quando:
 - Il progetto ha solo 1-2 skill banali → meglio uno script Python tradizionale
-- L'utente vuole solo "Claude Code in modalità autonoma" → meglio `claude -p ...` da cron
+- L'agente può essere **Anthropic-only** → è una rotta del gate qui sotto (nativo, Agent SDK sull'abbonamento, o CMA), non agentify
 - L'utente non sa ancora cosa l'agente debba fare → fai prima `/change-request` per chiarire
 
-### Routine nativa Claude Code vs agente standalone (decidere PRIMA di Fase 1)
+### Intervista d'ingresso (OBBLIGATORIA, appena la skill è invocata): prima i casi d'uso, poi la rotta
 
-Claude Code copre nativamente molta automazione (scheduled tasks/routine cloud,
-workflow multi-agente, subagent, hooks). agentify vale dove il nativo non
-arriva — dichiaralo esplicitamente all'utente:
+Appena agentify viene invocata — PRIMA della discovery e prima di scegliere
+qualunque rotta — si fa un'**intervista sui casi d'uso**. Sempre, anche quando
+la richiesta sembra già chiara: la rotta giusta dipende dai casi d'uso, e
+assumerli invece di chiederli è il modo tipico di scaffoldare la cosa sbagliata.
 
-| Requisito | Routine/workflow nativi | agentify |
-|---|:---:|:---:|
-| Automazione interna schedulata (check, report, refresh) per chi HA Claude Code | ✅ più semplice e mantenuto | ⚠️ overkill |
-| Utenti finali TERZI senza Claude Code (chat Telegram, servizio) | ❌ | ✅ |
-| Multi-modello per costo (GLM/Gemini/DeepSeek per ruolo) | ❌ | ✅ |
-| Servizio always-on con memoria longitudinale di dominio | parziale | ✅ |
-| Sviluppo software open-ended | ✅ superiore (harness maturo) | ❌ usa Claude Code |
-| Manutenzione codice delimitata dentro una pipeline autonoma | — | ✅ coding-agent + harness |
+Via `AskUserQuestion`, un batch:
 
-Se tutte le esigenze dell'utente cadono nella prima colonna, fermati e
-suggerisci le routine native: è il consiglio onesto.
+1. **Casi d'uso concreti** — cosa deve fare l'agente, elencati uno per uno
+   ("rispondere ai clienti su Telegram", "report settimanale sui progetti",
+   "manutenzione del modulo X"). Esempi reali, non categorie astratte.
+2. **Chi lo usa** — solo l'utente / colleghi con Claude Code / utenti terzi
+   senza Claude Code.
+3. **Dove deve girare** — PC dell'utente / server locale / cloud proprio /
+   nessuna infrastruttura da gestire.
+4. **Chi paga i modelli** — abbonamento Claude (prezzo fisso) o chiavi API a
+   token? E serve più di un vendor (Gemini, OpenAI, GLM, DeepSeek, …) o basta
+   Anthropic?
+
+Le risposte 1-2 diventano anche **input della Fase 1** (Identity Interview):
+lì si approfondisce l'identità, non si rifanno queste domande.
+
+### Il gate di rotta: le risposte decidono da sole
+
+| Risposta | Rotta | Perché |
+|---|---|---|
+| **Abbonamento Claude** — automazione per chi HA Claude Code | **Nativo Claude Code** (routine schedulate/cloud, workflow multi-agente, subagent, agent teams). Fermati: agentify è overkill | Costo marginale zero: già coperto dal canone. Harness maturo, mantenuto da Anthropic |
+| **Abbonamento Claude** — agente **standalone** self-hosted, solo modelli Claude | **Claude Agent SDK con l'auth dell'abbonamento** (lo stesso token OAuth di Claude Code). Fermati e indica la strada | Hosting libero (PC, server locale, cloud proprio) **a prezzo fisso**: nessun costo a token. Harness completo (context management, subagent, tool) mantenuto da Anthropic |
+| **API Anthropic a token, zero infrastruttura da gestire**, solo modelli Claude | **Claude Managed Agents (CMA)**. Fermati e indica la strada | Agente hostato da Anthropic: sessioni, scheduled deployments, vault per le credenziali, budget in $ per sessione. Paghi a token ma non gestisci server |
+| **Chiavi API esterne multi-vendor** (Gemini, Claude API, OpenAI, GLM, DeepSeek, …) pagate a token, **hosting libero** — il tuo PC, un server locale, un cloud qualsiasi | **agentify**: prosegui con Fase 0 | È l'unica rotta con **multi-modello per ruolo** |
+
+Il moat di agentify è **uno**: il multi-modello per ruolo (nessun lock-in di
+vendor, costo ottimizzato task per task, modelli cinesi/Gemini/OpenAI dove
+convengono). L'hosting sovrano NON è più un'esclusiva — l'Agent SDK
+sull'abbonamento è anch'esso self-hosted, e a costo fisso. Quindi il test è
+secco: **se l'agente può essere Anthropic-only, l'abbonamento vince sul costo
+e agentify non è la risposta.** agentify si giustifica solo quando servono
+modelli di più vendor.
+
+Limiti onesti della rotta Agent SDK + abbonamento, da dichiarare:
+
+- la **quota è quella dell'abbonamento**, condivisa con l'uso interattivo di
+  Claude Code: un servizio always-on ad alto volume può esaurirla o
+  strozzarsi nei rate limit — a quel punto si passa a CMA o API a token;
+- per un servizio esposto a **utenti terzi**, verificare che i termini
+  dell'abbonamento coprano quell'uso; in dubbio, la rotta pulita è CMA.
+
+Restano validi due discriminanti secondari, qualunque sia la rotta:
+
+- **Utenti finali terzi senza Claude Code** (chat Telegram, servizio esposto) →
+  esclude il nativo; restano Agent SDK/CMA (se Anthropic-only) o agentify.
+- **Sviluppo software open-ended** → Claude Code è superiore comunque; il
+  coding-agent di agentify vale per la manutenzione **delimitata** dentro una
+  pipeline autonoma, non per lo sviluppo esplorativo.
+
+Registra nel manifesto la rotta scelta (`route.choice` + `route.reason`) **e i
+casi d'uso raccolti nell'intervista d'ingresso**: la prossima sessione non deve
+rifare né il ragionamento né le domande.
 
 ---
 
@@ -62,8 +104,12 @@ suggerisci le routine native: è il consiglio onesto.
 Capisci il progetto. Esegui lo script automatizzato:
 
 ```bash
-python .claude/skills/agentify/scripts/discover.py --save
+python "${CLAUDE_PLUGIN_ROOT}/skills/agentify/scripts/discover.py" --save
 ```
+
+`CLAUDE_PLUGIN_ROOT` è la root del plugin installato: gli script e i template
+vivono lì, non nel progetto target. Se la variabile non è definita (skill copiata
+a mano dentro un progetto) ripiega su `.claude/skills/agentify/`.
 
 Output: `.agentify_discovery.json` nella root del progetto. Contiene:
 - `skills`: lista skill (name, description, body length)
@@ -126,9 +172,8 @@ Mostra trade-off tra engine candidati basati sui requisiti emersi:
 | Engine | Quando ha senso |
 |---|---|
 | **Agno + AgentOS** | Default. Multi-trigger (cron+chat+events), memoria persistente, multi-modello, UI inclusa. |
-| **Claude Agent SDK + custom service** | Pieno controllo, no framework lock-in. Più LOC ma semplicità concettuale. |
 | **Loop a mano (200 LOC Python)** | Caso semplice (singolo trigger, no UI), zero dipendenze pesanti. |
-| **Sub-agent in Claude Code** | Se l'agente deve girare DENTRO Claude Code (non standalone) → questa skill non è la soluzione, usa subagents. |
+| **Claude Agent SDK / Managed Agents / sub-agent Claude Code** | Già esclusi al **gate di rotta**: sono le rotte Anthropic-only (l'Agent SDK gira perfino a costo fisso sull'abbonamento). Se sei a questa fase, il progetto richiede multi-vendor. Se l'intervista fa cadere quel requisito, **torna al gate** invece di forzare agentify. |
 
 ### Filtri automatici
 
@@ -178,35 +223,58 @@ Per ogni ruolo, chiedi all'utente:
 - **Default model**: il modello consigliato
 - **Candidates**: lista di alternative per A/B test (utente sperimenterà)
 
-### Default model raccomandati (baseline 4.0.x)
+### La tabella dei modelli si costruisce A OGNI LANCIO, non si legge
 
-Punto di partenza per l'intervista — restano default+candidates da **provare col
-bench** (anti-pattern A4), non verità assolute:
+Questa skill **non contiene** una tabella di modelli raccomandati, per lo
+stesso motivo per cui `methodology` non ha più una tabella "stack default": i
+nomi e i prezzi dei modelli invecchiano in mesi, e una tabella scritta qui
+diventa il default che nessuno rimette più in discussione. Qui vive il
+**metodo**; i valori si raccolgono al momento del lancio.
 
-| Ruolo | Default | Candidates |
-|---|---|---|
-| Orchestrator | `gemini-3.1-pro-preview` | `glm-5.2` |
-| Analyzer | `gemini-3.1-pro-preview` | `glm-5.2` |
-| Writer | `gemini-3.5-flash` | — |
-| Critic | `deepseek-v4-pro` | — |
-| coding-agent (il "coder") | `glm-5.2` | `gemini-3.1-pro-preview` |
-| scout | `gemini-3.5-flash` | — |
-| high-level-ops | `gemini-3.5-flash` | `glm-5.2` |
+**1. La parte stabile — requisiti di capability per ruolo:**
 
-Per il coder la scelta tra default e candidate si fa **coi numeri**: golden
-task in `eval_coder` (Fase 5.5), non a sensazione.
+| Ruolo | Cosa deve saper fare il modello |
+|---|---|
+| Orchestrator | tool calling solido, routing affidabile tra specialisti |
+| Analyzer | reasoning su dati strutturati |
+| Writer | testo lungo di qualità, veloce ed economico |
+| Critic | second opinion — **vendor DIVERSO dal ruolo che critica**, per indipendenza reale |
+| coding-agent | agentic coding forte, patch precise, livelli di effort/reasoning alti disponibili |
+| scout | economico e veloce, contesto ampio |
+| high-level-ops | economico, tool calling affidabile |
 
-Env attese: `GOOGLE_API_KEY`, `DEEPSEEK_API_KEY`, `ZHIPU_API_KEY` (GLM via
-endpoint OpenAI-compatible di Z.ai — vedi `_models.py`).
+**2. Ricognizione al lancio:**
+
+- Chiedi all'utente **quali provider ha** (quali chiavi API possiede o vuole
+  attivare) e se ha già preferenze di modello.
+- **Non fidarti dei nomi modello nella tua memoria**: cambiano ogni pochi
+  mesi. Se hai accesso al web, verifica id correnti e prezzi sui listini
+  ufficiali dei provider scelti; altrimenti fatteli dare dall'utente.
+- Il rapporto prezzo/capacità tra vendor si ribalta a ogni generazione: la
+  scelta fatta per il progetto precedente non è un precedente valido.
+
+**3. Compila `models.roles` nel manifesto** con default + candidates per
+ruolo, e registra la **data della ricognizione** (`models.surveyed_at`): alla
+prossima manutenzione si saprà quanto sono vecchie le scelte.
+
+**4. Il verdetto resta dei numeri** (anti-pattern A4): bench per i ruoli di
+testo (5.4), `eval_coder` sui golden task per il coder (5.5).
+
+Env attese: una chiave per provider scelto — vedi `_models.py` per i prefissi
+supportati e le rispettive variabili (es. `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY`,
+`DEEPSEEK_API_KEY`, `ZHIPU_API_KEY`).
 
 ### Reasoning policy: decide l'Orchestrator
 
-Il livello di ragionamento (`low`/`medium`/`high`) NON è fissato per ruolo: lo
-sceglie l'**Orchestrator task per task** al momento della delega (manifesto:
-`models.reasoning_policy: orchestrator`). Il factory `resolve_model(id,
-reasoning=...)` traduce il livello nel parametro del provider (thinking budget
-per Gemini/Claude, `reasoning_effort` per GPT, thinking on/off per
-DeepSeek/GLM), con fallback pulito se il provider non lo supporta.
+Il livello di ragionamento NON è fissato per ruolo: lo sceglie
+l'**Orchestrator task per task** al momento della delega (manifesto:
+`models.reasoning_policy: orchestrator`), sulla scala `low`/`medium`/`high`.
+Il factory `resolve_model(id, reasoning=...)` traduce il livello nel parametro
+del provider: **effort per i Claude 5-family** (dove `high` mappa su `xhigh`,
+il livello raccomandato per l'agentic coding; `budget_tokens` è stato rimosso
+dall'API e va mai inviato), `reasoning_effort` per GPT, thinking budget per
+Gemini, thinking on/off per DeepSeek/GLM — con fallback pulito se il provider
+non lo supporta.
 
 → **Output**: sezione `models.roles` (+ `models.reasoning_policy`) del manifesto.
 
@@ -252,9 +320,19 @@ silenzio. Contromisure strutturali:
 
 1. **Quality gates nella definition-of-done**: lint come check `required` (non
    informativo) e almeno una **metrica non-decrescente** (`"metric":
-   "non_decreasing"`, es. coverage) — baseline persistita in
+   "non_decreasing"` + `"metric_pattern"`, es. coverage) — baseline persistita in
    `docs/ops/.metrics.json`; se la metrica scende il check fallisce anche con
    exit code 0. Valuta anche un budget di complessità (es. `radon`/`xenon`).
+   Due condizioni perché il gate esista davvero:
+   - **niente pipe POSIX nei comandi** (`| tail`, `| head`, `| grep`): con
+     `shell=True` su Windows il check fallisce sempre e, se è `required: false`,
+     fallisce *in silenzio* — un gate inerte è peggio di nessun gate, perché ti
+     credi coperto. Estrai il numero con `metric_pattern`, non con la pipe;
+   - **`metric_pattern` obbligatorio**, regex con un gruppo di cattura. "L'ultimo
+     numero dell'output" può essere il tempo di esecuzione dei test: la baseline
+     si fissa su quello e da lì qualunque valore la supera.
+   Il check con metrica va dichiarato `required: true`. Se il progetto non ha
+   coverage, **rimuovi** il check invece di degradarlo a informativo.
 2. **Tetto ai diff proposti** (`max_propose_diff_lines`, default 400): un diff
    irrevisionabile verrebbe approvato senza lettura — oltre soglia
    `git_propose_diff` rifiuta e impone batch più piccoli.
@@ -302,11 +380,9 @@ tools:
     glob: allow
     grep: allow
     lsp: allow
-    edit: propose        # allow | propose | deny  (propose = propose-and-confirm via OUTBOX)
-    write:
-      "reports/**": allow
-      "*": propose
-    apply_patch: propose
+    edit: allow          # allow | propose | deny  (propose = propose-and-confirm via OUTBOX)
+    write: allow
+    apply_patch: allow
     shell:
       "git status": allow
       "pytest*": allow
@@ -318,14 +394,40 @@ tools:
 
 (`ask` di opencode diventa `propose` nel contesto unattended: la richiesta di approvazione è asincrona via OUTBOX, non un prompt bloccante.)
 
+### A che livello mettere il propose-and-confirm (non sulla singola call)
+
+Per il **coding-agent** `edit`/`write`/`apply_patch` sono `allow` anche unattended,
+e il gate umano sta **sul diff**, non sulla singola tool call. Le ragioni sono due,
+entrambe verificate:
+
+1. **Con `edit: propose` il ciclo non può chiudersi.** Una `propose` non viene
+   eseguita: nessun edit atterra, `verify()` restituisce sempre lo stesso rosso, e
+   il ruolo ri-propone finché non incontra churn o kill-switch. Il ciclo
+   `edita → verifica → itera fino a verde` che la skill dichiara obbligatorio
+   diventa strutturalmente impossibile.
+2. **Una call accodata non è revisionabile.** In OUTBOX finisce il payload della
+   chiamata troncato: chi approva non vede il codice risultante e non può
+   applicarlo. `git_propose_diff` scrive invece il **diff reale**, con tetto a
+   `max_propose_diff_lines`: quello si rivede.
+
+Il contenimento del coder non viene dal permesso ma dalla **struttura**: lavora
+solo su branch `agent/*`, non può fare push né merge, ogni batch è reversibile col
+checkpoint, i path sensibili restano negati dalla baseline, kill-switch e churn
+limitano la deriva. Chi decide se quel lavoro entra in main è l'umano che legge il
+diff in OUTBOX.
+
+Per i ruoli **non isolati su branch** (es. `high-level-ops`, che scrive report nel
+worktree vivo) vale l'opposto: `write` ristretto alla sola output dir, `"*": propose`.
+
 ### Tool-guard (erede dell'ex claude-session-supervisor)
 
 Layer di enforcement attorno all'esecuzione di ogni tool call dei ruoli tool-empowered, in ordine di costo:
 
-1. **Kill-switch**: counter di tool call per run; oltre `kill_switch_limit` (default 200) → DENY hard + emergency log. Rete di sicurezza contro loop runaway.
+1. **Kill-switch**: counter di tool call per run; oltre `kill_switch_limit` (default 200) → DENY + emergency log. Rete di sicurezza contro loop runaway. **Con budget di grazia** (`recovery_grace`, default 20) sui soli tool di diagnosi e rollback (`read`, `glob`, `grep`, `repomap`, `context`, `verify`, `gitops`): un kill-switch che nega anche `git_revert_to_checkpoint` taglia il paracadute — lascia il worktree mezzo editato e nessun modo di ripararlo. Nessuno dei tool in grazia scrive codice.
 2. **Denylist statica**: baseline sempre presente (path sensibili da discovery: `.env*`, segreti; comandi distruttivi: `rm`, `git push`, delete massivi) + `PROJECT_DENYLIST` estendibile dall'utente.
-3. **Allowlist statica**: le strade autorizzate della mission (path/pattern noti). Deve coprire l'80-90% dei tool call attesi.
-4. **Propose-and-confirm**: ciò che non è né deny né allow e ha permesso `propose` → scritto in `OUTBOX.md` come proposta, non eseguito. Un umano (o un run successivo dopo conferma) la applica.
+3. **Churn detector**: edit ripetuti sullo stesso file **senza un `verify()` VERDE in mezzo**. Il contatore si azzera a ogni verde (`GUARD.mark_progress()`): molti edit ciascuno verificato sono iterazione legittima, non thrashing. Senza il reset il detector colpirebbe proprio il file caldo del task — cioè il lavoro buono — e negherebbe l'edit necessario a riparare un verify rosso.
+4. **Allowlist statica**: le strade autorizzate della mission (path/pattern noti). Deve coprire l'80-90% dei tool call attesi.
+5. **Propose-and-confirm**: ciò che non è né deny né allow e ha permesso `propose` → scritto in `OUTBOX.md` come proposta, non eseguito. Un umano (o un run successivo dopo conferma) la applica. Per le modifiche al codice il livello giusto è il **diff** (`git_propose_diff`), non la singola call.
 
 Più: **audit trail append-only** (`AUDIT.md`: ogni decisione con timestamp, tool, regola che ha deciso), **lock anti-concorrenza** (due run schedulate non si sovrappongono), **UTF-8 forzato** su Windows.
 
@@ -404,7 +506,7 @@ audit_log/proposals/              # solo se propose-and-confirm
 
 ### Come renderizzare i template
 
-I template sono in `.claude/skills/agentify/templates/`. Hanno placeholder Jinja2-style con i valori dal manifesto:
+I template sono in `${CLAUDE_PLUGIN_ROOT}/skills/agentify/templates/`. Hanno placeholder Jinja2-style con i valori dal manifesto:
 - `{{ identity.name }}`
 - `{{ models.roles.orchestrator.default }}`
 - `{% for skill in skills.imported %}{{ skill }}{% endfor %}`
@@ -468,6 +570,9 @@ chat consumer-facing. Pattern raccomandato: **Telegram**.
 Pattern Agno: `agno.os.interfaces.{telegram, slack, whatsapp, a2a, agui}`. Lo scaffolding copre
 Telegram; le altre interface seguono lo stesso schema (sostituibili dall'utente).
 
+Per una **GUI web** sopra l'agente (console di controllo, dashboard, form,
+approvazioni OUTBOX) → skill `guify` con engine `agentos`: non duplicare qui.
+
 **Sicurezza & permessi** (correlato al boundary "MAI output verso esterni"): chi può
 scrivere al bot accede all'agente. Due livelli:
 - **Whitelist** (base, on/off): `TELEGRAM_ALLOWED_USERS=<user_id1,user_id2>` nel polling
@@ -520,7 +625,11 @@ Verifica deterministica del tool-guard:
 - tool call su path allowlisted → eseguito
 - tool call su denylist (path sensibile, comando distruttivo) → DENY + audit entry
 - tool call `propose` → NON eseguito, proposta in `OUTBOX.md`
-- superamento `kill_switch_limit` → DENY hard di tutto
+- superamento `kill_switch_limit` → DENY delle scritture, ma diagnosi e
+  `git_revert_to_checkpoint` restano possibili entro `recovery_grace`; esaurita
+  la grazia, DENY di tutto
+- `churn_limit` edit sullo stesso file senza verde → DENY `thrashing`; dopo un
+  `verify()` VERDE il contatore riparte da zero
 - doppio run simultaneo → secondo run bloccato dal lock
 
 ### 5.3 Avvio AgentOS
@@ -623,9 +732,25 @@ Non promettere che "Claude è il migliore per orchestrator". Le scelte modello v
 
 Quando l'agente fa azioni reali (write su sistemi, editing di codice, creare contenuti pubblici), il Critic è la differenza tra "agente affidabile" e "agente da incidente". Sempre presente nel team se autonomy != read-only.
 
-### A6. Templates non rinominati
+### A6. Templates non rinominati, segnaposto sopravvissuti
 
-Un file lasciato come `main.py.template` invece di `main.py` è un bug latente. Tutti i template DEVONO essere renderizzati e rinominati. La presenza di file `.template` nel progetto target è sintomo di scaffolding incompleto. Verifica con grep che non restino `{{ placeholder }}`.
+Un file lasciato come `main.py.template` invece di `main.py` è un bug latente. Tutti i template DEVONO essere renderizzati e rinominati. La presenza di file `.template` nel progetto target è sintomo di scaffolding incompleto.
+
+Verifica con grep **entrambe** le forme di segnaposto:
+
+```bash
+grep -rn "{{" agent/ deploy/ scripts/          # placeholder Jinja
+grep -rn "TODO durante scaffolding" agent/     # segnaposto in prosa
+```
+
+La seconda è la più insidiosa: un `# TODO durante scaffolding: descrivi il
+perimetro` lasciato **dentro la stringa delle instructions** diventa la
+definizione di scope che il modello legge — cioè nessuno scope — e non è un
+`{{ }}`, quindi il primo grep non lo vede. Per questo i punti che finiscono nel
+system prompt sono espressi come placeholder (`{{ role_perimeter }}`,
+`{{ role_task }}`, `{{ ops_profiles }}`, `{{ orchestrator_flows }}`,
+`{{ vincoli_specifici_ruolo }}`) e la guida su cosa scriverci sta in un commento
+Python **fuori** dalla stringa.
 
 ### A7. Coding-agent senza guard
 
@@ -661,15 +786,17 @@ Caso reale: un coding-agent ha aggiunto una funzione a un pannello esistente —
 
 Prima di dichiarare "fatto":
 
+0. Ho fatto l'**intervista d'ingresso sui casi d'uso** (sempre, anche se la richiesta sembrava chiara) e POI il **gate di rotta** (abbonamento → nativo o Agent SDK / API Anthropic zero-infra → CMA / chiavi multi-vendor + hosting libero → agentify), registrando rotta e casi d'uso nel manifesto (`route`)?
 1. Ho fatto Fase 1 con domande mirate, non assunto un'identità?
 2. Ho mostrato il manifesto all'utente per validazione?
 3. Ho discusso engine + razionale con l'utente, non scelto unilateralmente?
 4. I ruoli che ho proposto riflettono il dominio specifico?
-5. I modelli hanno default + candidates per A/B testing?
+5. I modelli hanno default + candidates per A/B testing, scelti con una **ricognizione fatta al lancio** (non da memoria) e datata nel manifesto (`models.surveyed_at`)?
 6. Se ci sono ruoli tool-empowered: permessi per tool definiti (allow/propose/deny), autonomy level classificato per ogni capacità, guard scaffoldato e testato?
+6b. Il propose-and-confirm del coding-agent è **sul diff** (`git_propose_diff`) e non sulla singola `edit`? Con `edit: propose` il ciclo edit→verify non può chiudersi.
 7. Se c'è il coding-agent: definition-of-done dichiarata nel manifesto, Scout nel team, golden task presi da manutenzioni reali, e le instructions impongono il ciclo orienta→checkpoint→edit→verify→chiudi (con `project_context` obbligatorio al passo 1 e `log_decision` alla chiusura)?
-7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente, tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
-8. I template sono renderizzati con valori reali, niente `{{ placeholder }}` nei file finali?
+7b. Gate anti-degrado attivi: lint `required`, almeno una metrica non-decrescente **con `metric_pattern` e `required: true`** (e nessuna pipe POSIX nei comandi della definition-of-done), tetto diff, churn limit, e policy di revisione OUTBOX nel RUNBOOK?
+8. I template sono renderizzati con valori reali: nessun `{{ placeholder }}` **e nessun `TODO durante scaffolding`** nei file finali (vedi A6)?
 9. Ho lanciato smoke test (e guard test se applicabile) e ottenuto pass?
 10. Ho documentato il deploy in `runbook.md` (e l'operatività in `docs/ops/RUNBOOK.md` se schedulato)?
 11. Le boundaries hard sono nel system prompt + nella denylist del guard + nelle instructions del Critic?

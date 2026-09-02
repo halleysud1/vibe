@@ -43,24 +43,14 @@ Prima della Fase 1, capisci la struttura del progetto corrente. Esegui questi st
 
 ### 0.1. Cerca il manifesto
 
-```bash
-# Trova la mappa di navigazione della docs
-ls docs/README.md CLAUDE.md PROJECT.md 2>/dev/null
-```
-
 Se **`docs/README.md`** esiste → leggilo: contiene la mappa autoritativa di cosa sta dove. Usa quello per orientarti.
 
 Se **`CLAUDE.md`** esiste → contiene istruzioni operative specifiche del progetto. Leggi sempre.
 
 ### 0.2. Inventario rapido
 
-```bash
-ls -la                              # root del progetto
-find docs -type f -name "*.md" 2>/dev/null | head -30
-ls docs/decisions 2>/dev/null       # ADR esistenti
-test -f decisions.log && echo "has decisions.log"
-ls .claude/skills 2>/dev/null       # skill disponibili
-```
+Usa i tuoi strumenti di ricerca — non ricette di shell: il progetto può girare su
+qualunque OS, e una pipeline POSIX su Windows ti restituisce solo errori.
 
 Identifica:
 
@@ -73,7 +63,14 @@ Identifica:
 
 ### 0.3. Se la struttura manca
 
-Se il progetto **non ha** un `docs/README.md` (mappa di navigazione), interrompi il protocollo e proponi all'utente di crearlo **prima**. Motivazione: senza mappa, la Fase 1 (Impact Analysis) non ha discoverability. Usa il template in fondo a questa skill come punto di partenza.
+Se il progetto **non ha** un `docs/README.md` (mappa di navigazione), **non fermarti**: la maggioranza dei repo reali non ce l'ha, e bloccare la CR su un prerequisito documentale significa o non partire mai, o insegnare all'utente (e a te) che i cancelli di questo protocollo si scavalcano — compresa la Fase 5, che è quella che conta.
+
+Procedi così:
+
+1. Fai l'Impact Analysis sui documenti che **trovi** (spec, architettura, ADR, README), dichiarando in apertura del report che la mappa manca e cosa non hai potuto verificare.
+2. Metti la creazione di `docs/README.md` tra le voci di **Fase 5**, usando il template in fondo a questa skill.
+
+Unica eccezione: se la CR è strategic **e** non trovi nessun documento autoritativo, allora l'Impact Analysis sarebbe pura congettura — lì sì, fermati e concorda prima una spec minima con l'utente.
 
 ---
 
@@ -263,6 +260,7 @@ Per ciascun punto, **esegui o spiega perché non è applicabile**:
 - [ ] **Rimossi file**: niente `.deprecated` / `.old` / commented-out code
 - [ ] **Niente parallel flows rimasti live** (ricerca manuale o grep su nomi vecchi)
 - [ ] **README del progetto**: se la CR è user-facing, aggiornato
+- [ ] **Mappa docs**: se la Fase 0 aveva rilevato l'assenza di `docs/README.md`, creata ora
 
 ### Anti-sabotage: no scorciatoie
 

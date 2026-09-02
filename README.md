@@ -1,41 +1,54 @@
-# Vibecoding - SDD toolkit per Claude Code
+# Vibecoding — SDD toolkit per Claude Code
 
-> Versione corrente: **4.5.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
+> Versione corrente: **5.0.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
 
-Plugin che porta il **vibecoding spec-driven development** in qualunque progetto
-Claude Code. È un repo di **skill** + un comando di bootstrap, non un sistema
-multi-agente: la metodologia vive nelle skill, gli agenti vivi sono quelli nativi
-di Claude Code.
+## A cosa serve
 
-> **Cambiamento rispetto a v2.x**: il plugin è stato ripensato come **toolkit di skill
-> riusabili**, non più come "team di sviluppo autonomo". Vedi `docs/MIGRATION_2.1_to_3.0.md`.
+Un modello forte scrive buon codice. Quello che continua a non fare da solo è
+**tenere insieme un progetto nel tempo**: chiedere il dominio prima di
+costruirci sopra, mettere ogni informazione nella sede dove verrà riletta,
+migrare invece di affiancare, e lasciare la documentazione allineata al codice
+quando la sessione finisce.
+
+Vibecoding è un plugin di **skill** che codifica quel metodo e lo rende
+disponibile in qualunque progetto Claude Code. Non è un sistema multi-agente:
+gli agenti sono quelli nativi — qui vivono il metodo, i protocolli e gli
+scaffold.
+
+## Perché è utile
+
+| Problema ricorrente | Cosa fa il plugin |
+|---|---|
+| Si costruisce su assunzioni di dominio mai verificate | `/vibecoding:init` intervista su business e vincoli **prima** di scrivere codice |
+| Le regole del progetto finiscono tutte in `CLAUDE.md`, che nessuno rilegge davvero | **Routing 3-vie**: ogni desideratum va in `CLAUDE.md`, `PROJECT_SPEC.md` o in una SKILL che si attiva da sola quando serve |
+| Gli esempi dell'utente diventano valori hardcoded | Regola **anti-overfit**: l'esempio diventa un default configurabile, l'intenzione diventa il requisito |
+| Si aggiunge la feature nuova e la vecchia resta viva accanto | `change-request`: impact analysis, spec prima del codice, migrazione esplicita, **niente parallel flows** |
+| A fine lavoro test verdi e documentazione stale | **Fase 5 — close the loop**: spec, ADR, snapshot e journal aggiornati nella stessa change |
+| Serve un agente che giri dove Claude Code non c'è | `agentify`: scaffolda un agente standalone con ruoli multi-modello, tool-guard e autonomy gates |
+| La lavorazione va consegnata a chi non usa Claude Code | `guify`: la distribuisci come **interfaccia grafica** — console di controllo, dashboard, form, chat — invece che come cartella con le skill |
+| Una ricerca va consegnata a un terzo che deve poterla verificare riga per riga | `deep-research`: funnel ricorsivo, ogni claim arbitrato sulla fonte primaria, sinottico auditabile |
+| Una spec va consegnata come documento presentabile | `md-to-pdf`: Markdown → PDF impaginato |
+
+Il criterio che regge tutto: **specifica dove serve, libertà dove giova.**
+L'utente è autoritativo sul dominio e sui vincoli; le decisioni tecniche restano
+al modello.
 
 ---
 
-## Cosa offre
+## Cosa contiene
 
 | Componente | Descrizione |
 |---|---|
-| **Skill `methodology`** | Filosofia 3 livelli (business / ecosistema / tecnico), regola anti-overfit, gestione contesto |
-| **Skill `validation-strategies`** | Checklist di scenari di validazione per tipo app (web, API, bot, CLI, pipeline, IoT); la meccanica è delegata ai tool nativi (`/verify`, `/run`, Claude Preview) |
-| **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows |
-| **Skill `agentify`** | Trasforma un progetto Claude Code (con skill + MCP) in agente Agno standalone. Ruoli tool-empowered con harness completo: **coding-agent** (tool edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode) + loop di verifica su definition-of-done, checkpoint/rollback git, **scout** a contesto separato, repo map, eval su golden task), **high-level-ops** (run schedulate) — governati da tool-guard con autonomy gates L0-L5, gate anti-degrado (metriche non-decrescenti, tetto diff, churn detector), audit trail e propose-and-confirm |
-| **Skill `skill-bootstrap`** | Intervista metodologica: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL |
-| **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (pure-python o Chromium hi-fi), con sintesi AI opzionale |
-| **Skill `deep-research`** | Cicli di ricerca profonda **ricorsivi** con Google Deep Research come motore: tre stadi tendenziali (inquadramento → dubbi → focalizzazione), controllo delle fonti e confronto a due gambe dopo ogni round, e i dubbi strutturali chiusi con round dedicati **prima** di stringere l'imbuto. Arbitraggio sulla fonte primaria (mai a maggioranza fra LLM), scoring, sinottico con traccia della ricorsione. Include blueprint di state machine per il full-auto |
-| **Comando `/vibecoding:init`** | Entry point per bootstrappare un nuovo progetto: chiama `skill-bootstrap` |
+| **Skill `methodology`** | Filosofia 3 livelli (business / ecosistema / tecnico), regola anti-overfit, gestione del contesto |
+| **Skill `skill-bootstrap`** | Intervista di inizio progetto: routing 3-vie delle desiderata in CLAUDE.md / PROJECT_SPEC / SKILL, scaffolding, chiusura |
+| **Skill `change-request`** | Protocollo a 5 fasi per change non banali. Anti bias additivo, no parallel flows, propagazione della documentazione |
+| **Skill `validation-strategies`** | Checklist di scenari di validazione per tipo di app (web, API, bot, CLI, pipeline, IoT); la meccanica è delegata ai tool nativi (`/verify`, `/run`, Claude Preview) |
+| **Skill `agentify`** | Trasforma un progetto Claude Code in agente Agno standalone. Ruoli tool-empowered con harness completo: **coding-agent** (tool edit/shell/LSP derivati da [opencode](https://github.com/anomalyco/opencode) + verify loop sulla definition-of-done, checkpoint/rollback git, **scout** a contesto separato, repo map, eval su golden task), **high-level-ops** (run schedulate) — governati da tool-guard con autonomy gates L0-L5, gate anti-degrado, audit trail e propose-and-confirm sul diff |
+| **Skill `guify`** | Distribuisce una lavorazione come **GUI collegata alla sessione o all'agente**. Gate multi-superficie: widget in-chat (`sendPrompt`), artifact con capabilities (per colleghi con account Claude), app standalone self-hosted — FastAPI sopra **Agent SDK** (abbonamento a prezzo fisso) o **AgentOS** (agentify) — con RBAC default-deny, form→prompt strutturati per i terzi, approvazioni sul diff reale, audit |
+| **Skill `deep-research`** | Cicli di ricerca profonda **ricorsivi** con Google Deep Research come motore: inquadramento → chiusura dei dubbi → focalizzazione, controllo delle fonti dopo ogni round, arbitraggio sulla fonte primaria (mai a maggioranza fra LLM), sinottico con traccia della ricorsione. Include blueprint di state machine per il full-auto |
+| **Skill `md-to-pdf`** | Converte Markdown in PDF formattati (Chromium ad alta fedeltà o pure-python), con sintesi AI opzionale |
+| **Comando `/vibecoding:init`** | Entry point per bootstrappare un progetto: richiama `skill-bootstrap` |
 | **Templates** | Scaffold pronti per "modulo software" e "cartella di lavorazione Claude" |
-
-## Novità recenti (linea 4.x)
-
-- **4.5.0** — `deep-research` diventa **ricorsiva**: i dubbi strutturali emersi dal controllo si chiudono con round dedicati prima di stringere l'imbuto (invariante "non si stringe su un dubbio aperto"), classificazione dei dubbi in strutturali / puntuali / irriducibili, limite di ricorsione dichiarato in partenza, stop-and-ask quando il budget finisce con dubbi aperti; state machine full-auto riscritta con stadi dinamici, stato `attesa_decisione` e `decide()`
-- **4.4.0** — nuova skill `deep-research`: funnel a imbuto su Deep Research (task long-running 10-40 min) con gamba grounded veloce per audit e gap; nessun output LLM autoritativo per default (validazione URL sulla fonte, fact-check deterministico, second-opinion adversarial, matrice di accordo arbitrata sulla fonte primaria); blueprint full-auto con state machine persistente, resume e notifiche proattive
-- **4.3.0** — orientamento decisionale del coding-agent: tool `project_context` (storia decisionale in una chiamata, obbligatorio prima di editare) + `log_decision` (chiusura del loop sul journal), plausibilità del risultato oltre ai test, anti-pattern A13 "context-blindness"; fix AFC nascosto su Gemini + RBAC multi-utente
-- **4.2.0** — gate anti-degrado del coding-agent: metriche non-decrescenti in `verify` (baseline persistita), tetto ai diff proposti, churn detector, revisione OUTBOX anti rubber-stamping
-- **4.1.0** — harness del coding-agent: loop di verifica su definition-of-done, `gitops` (checkpoint/rollback su branch `agent/*`, diff reale in OUTBOX), ruolo `scout`, `repo_map`, `eval_coder` con golden task
-- **4.0.x** *(breaking)* — le ex skill `agentic-ops-daemon` e `claude-session-supervisor` sono consolidate in `agentify` (ruolo `high-level-ops` + tool-guard); tool layer derivato da opencode con provenance in `OPENCODE_HARVEST.md`
-
-Dettagli e percorsi di migrazione nel [CHANGELOG](CHANGELOG.md).
 
 ---
 
@@ -72,37 +85,43 @@ claude plugin install vibecoding@vibecoding-marketplace
 
 Init ti guida attraverso:
 
-1. **Tipo di lavorazione** — modulo software vs cartella di lavorazione Claude
-2. **Intervista** — domande di L1 (business) e L2 (vincoli) + regole operative ricorrenti
-3. **Routing 3-vie** — classifica le desiderata in CLAUDE.md / PROJECT_SPEC / SKILL
-4. **Scaffolding** — scrive i 3 artefatti popolati
+1. **Detect** — cosa esiste già nel progetto
+2. **Tipo di lavorazione** — modulo software vs cartella di lavorazione Claude
+3. **Intervista** — domande di L1 (business) e L2 (vincoli) + regole operative ricorrenti
+4. **Routing 3-vie** — classifica le desiderata in CLAUDE.md / PROJECT_SPEC / SKILL, con la tua approvazione
+5. **Scaffolding** — scrive gli artefatti popolati e chiude con journal e memory
 
-Output: progetto pronto, con vincoli globali in CLAUDE.md, visione/RF in PROJECT_SPEC,
-e skill dedicate per le regole operative ricorrenti.
+Output: progetto pronto, con i vincoli globali in CLAUDE.md, visione e requisiti
+in PROJECT_SPEC, e skill dedicate per le regole operative ricorrenti.
 
 ---
 
-## Filosofia in 1 minuto
+## Il metodo in 1 minuto
 
 ### I 3 livelli
 
 | Livello | Cosa è | Sede naturale |
 |---|---|---|
 | **L1 — Business** | Visione, utenti, requisiti funzionali | `PROJECT_SPEC.md` |
-| **L2 — Ecosistema** | Vincoli ambiente, stack, normative | `CLAUDE.md` |
+| **L2 — Ecosistema** | Vincoli ambiente, stack imposto, normative | `CLAUDE.md` |
 | **L3 — Tecnico** | Framework, architettura, pattern | `docs/ARCHITECTURE.md` + ADR |
 
-L'utente è autoritativo su L1+L2. Claude è autonomo su L3.
+L'utente è autoritativo su L1+L2. Claude è autonomo su L3 — e il plugin non
+prescrive nessuno stack di default: una tabella di framework scritta una volta
+verrebbe applicata a progetti che non la giustificano.
 
 ### Anti-overfit
 
-Esempi concreti dell'utente → **default configurabili**, non hardcoded.
+Gli esempi concreti dell'utente diventano **default configurabili**, non valori
+hardcoded. Il test: *"se domani volesse cambiare questo valore, dovrebbe
+modificare il codice?"* Se sì, stai overfittando.
 
 ### Routing 3-vie
 
-Le **regole operative ricorrenti** (es. "ogni elemento core deve avere un'attività
-futura") non vanno né in CLAUDE.md né in PROJECT_SPEC: vanno in **SKILL.md**
-dedicate, dove Claude le attiva contestualmente via la `description`.
+Le **regole operative ricorrenti** (es. "ogni elemento core deve avere
+un'attività futura") non vanno né in CLAUDE.md né in PROJECT_SPEC: vanno in
+**SKILL.md** dedicate, dove Claude le attiva contestualmente via la
+`description`. È il progressive disclosure applicato alle regole di progetto.
 
 ---
 
@@ -117,86 +136,65 @@ vibe/
 ├── .claude-plugin/
 │   └── plugin.json
 ├── commands/
-│   └── init.md                      # /vibecoding:init
+│   └── init.md                      # /vibecoding:init (entry point sottile)
 ├── skills/
 │   ├── methodology/SKILL.md
-│   ├── validation-strategies/SKILL.md
+│   ├── skill-bootstrap/SKILL.md
 │   ├── change-request/SKILL.md
+│   ├── validation-strategies/SKILL.md
 │   ├── agentify/
 │   │   ├── SKILL.md
-│   │   ├── OPENCODE_HARVEST.md     # provenance del tool layer (commit opencode pinnato)
-│   │   ├── scripts/                # discover.py (Fase 0: skill, MCP, OS, path sensibili)
+│   │   ├── OPENCODE_HARVEST.md      # provenance del tool layer (commit opencode pinnato)
+│   │   ├── scripts/                 # discover.py (Fase 0: skill, MCP, OS, path sensibili)
 │   │   └── templates/
-│   │       ├── agno/               # main, ruoli (coding_agent, scout, high_level_ops),
-│   │       │   │                   #   eval_coder + golden_tasks, start/stopagent.bat
-│   │       │   └── tools/          # guard, fs, shell, verify, gitops, repomap, lsp, tasklist
-│   │       ├── prompts/            # varianti system prompt coding-agent (harvest opencode)
-│   │       └── ops/                # RUNBOOK, TASK_QUEUE, OUTBOX, AUDIT, ops-run.ps1/.sh
-│   ├── skill-bootstrap/SKILL.md
-│   ├── md-to-pdf/
-│   │   ├── SKILL.md
-│   │   ├── scripts/
-│   │   └── styles/
-│   └── deep-research/
-│       ├── SKILL.md                 # protocollo del funnel con gate umani
-│       ├── scripts/                 # deep_research.py, grounded_research.py, env_loader.py
-│       ├── prompts/                 # template dei round + audit adversarial
-│       ├── references/              # Interactions API verificata, calibrazione del funnel
-│       └── templates/fullauto/      # state machine, tool di chat, WIRING.md
+│   │       ├── agno/                # main, ruoli (coding_agent, scout, high_level_ops),
+│   │       │   │                    #   eval_coder + golden_tasks, start/stopagent.bat
+│   │       │   └── tools/           # guard, fs, shell, verify, gitops, repomap, lsp, tasklist
+│   │       ├── prompts/             # varianti system prompt del coding-agent
+│   │       └── ops/                 # RUNBOOK, TASK_QUEUE, OUTBOX, AUDIT, ops-run.ps1/.sh
+│   ├── deep-research/
+│   │   ├── SKILL.md                 # protocollo del funnel con gate umani
+│   │   ├── scripts/                 # deep_research.py, grounded_research.py, env_loader.py
+│   │   ├── prompts/                 # template dei round + audit adversarial
+│   │   ├── references/              # Interactions API verificata, calibrazione del funnel
+│   │   └── templates/fullauto/      # state machine, tool di chat, WIRING.md
+│   ├── guify/
+│   │   ├── SKILL.md                 # gate multi-superficie + regole di sicurezza G1-G6
+│   │   └── templates/
+│   │       ├── gui.yaml.template    # manifesto della GUI
+│   │       ├── standalone/          # FastAPI + engine sdk/agentos + RBAC + frontend + test
+│   │       ├── artifact/PATTERNS.md # GUI come pagina pubblicata (colleghi con account)
+│   │       └── widget/PATTERNS.md   # GUI in-chat (sendPrompt)
+│   └── md-to-pdf/
+│       ├── SKILL.md
+│       ├── scripts/
+│       └── styles/
 ├── templates/
 │   ├── modulo/                      # scaffold "modulo software"
 │   ├── cartella/                    # scaffold "cartella di lavorazione"
-│   ├── skill-stub/SKILL.md          # template per skill scritte da init
-│   └── scripts/quality-gate.sh      # opzionale, era plugin-level in v2.1
+│   ├── skill-stub/SKILL.md          # template per le skill scritte dal bootstrap
+│   └── scripts/quality-gate.sh      # quality gate composito, opzionale
 └── docs/
-    └── MIGRATION_2.1_to_3.0.md
 ```
 
----
-
-## Cosa è cambiato dal 2.x
-
-**Rimosso** (perché Claude Code copre nativamente):
-- Tutti gli agenti `architect`, `reviewer`, `tester`, `security-auditor`, `validation-agent`
-  → usa subagent nativi e i comandi `/review`, `/security-review`
-- Hooks (`SessionStart`, `Stop`, `PreCompact`, `PostCompact`, `PreToolUse Bash`, `PostToolUse Edit`)
-  → tutti supportati nativamente con type `prompt` per Stop ecc.
-- Skill `parallel-execution` → Agent Teams nativi e parallel tool calls
-- Skill `quality-system` → assorbita in `methodology`; il quality-gate.sh resta opzionale
-- Slash command `/validate`, `/status`, `/review`, `/plan` → coperti dal nativo o non più necessari
-- `userConfig` nel manifest → non più nello schema plugin attuale
-
-**Aggiunto**:
-- Skill `change-request` (protocollo 5 fasi)
-- Skill `agentify` (engine-agnostic, default Agno+AgentOS; dalla 4.x con ruoli
-  tool-empowered `coding-agent`/`scout`/`high-level-ops`, tool layer derivato da
-  opencode, harness con verify loop + gitops + eval golden task, tool-guard con
-  autonomy gates e gate anti-degrado — assorbe le ex skill `agentic-ops-daemon`
-  e `claude-session-supervisor`, rimosse in 4.0.0)
-- Skill `skill-bootstrap` (intervista routing 3-vie)
-- Skill `md-to-pdf` (Markdown → PDF, pure-python o Chromium hi-fi, sintesi AI opzionale)
-- Templates "modulo" / "cartella di lavorazione"
-
-**Migrato**:
-- `init.md` esteso con FASE A (tipo lavorazione), FASE C (routing), FASE D (writer SKILL)
-- `methodology` refactor SDD-focused
-- `validation-strategies` invariata, spostata in cartella
-
-Vedi `docs/MIGRATION_2.1_to_3.0.md` per chi aveva v2.1 installato.
+Gli script delle skill si invocano sempre via `${CLAUDE_PLUGIN_ROOT}`: vivono
+nella directory del plugin installato, non nel progetto.
 
 ---
 
 ## Requisiti
 
-- Claude Code CLI o Desktop App (versione 2026 con Skills + Subagents nativi)
+- Claude Code CLI o Desktop App (con Skills e Subagents nativi)
 - Per `agentify`: Python 3.10+ con `agno`, `pyyaml`, `python-dotenv` se usi il default Agno
 - Per `deep-research`: Python 3.10+ con `google-genai>=2.0.0` e `GEMINI_API_KEY` in ambiente o `.env`
+- Per `md-to-pdf`: `playwright` + Chromium per l'alta fedeltà, oppure `markdown-pdf` come fallback offline
+- Per `guify` (superficie standalone): Python 3.10+ con `fastapi`, `uvicorn`, `pyyaml`; engine sdk: `claude-agent-sdk` (o la CLI `claude`); engine agentos: `httpx`
 
 ---
 
-## Filosofia
+## Principi
 
-1. **Specifica dove serve, libertà dove giova** — 3 livelli, non un livello solo
+1. **Specifica dove serve, libertà dove giova** — tre livelli, non uno solo
 2. **Routing esplicito** — ogni desideratum ha la sua sede corretta
 3. **Skill come memoria operativa** — le regole ricorrenti vivono nelle skill, non nei prompt
 4. **No parallel flows** — quando si migra, si rimuove il vecchio

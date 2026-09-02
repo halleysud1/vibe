@@ -1,0 +1,130 @@
+"""GUI di lavorazione — backend FastAPI (scaffoldato da /guify).
+
+Endpoints (ogni capability e' RBAC default-deny, vedi rbac.py):
+  POST /api/task                {prompt, resume?}    cap: task.launch (solo free-chat roles per prompt liberi)
+  POST /api/form/{form_id}      {values}             cap: form.submit  -> prompt via template dichiarato
+  GET  /api/task/{task_id}                           cap: task.status
+  GET  /api/dashboard                                cap: dashboard
+  GET  /api/outbox                                   cap: outbox.read   (engine agentos)
+  POST /api/outbox/{id}/approve                      cap: outbox.approve
+  GET  /                        frontend (web/index.html)
+
+Avvio:  uvicorn gui.server.app:app --port {{ gui_port | default(8600) }}
+Auth :  header "Authorization: Bearer <token>" (token -> account: vedi rbac.py)
+"""
+from __future__ import annotations
+
+import datetime
+import json
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+
+from . import prompts
+from .rbac import MANIFEST, Depends as _D  # noqa: F401 (chiarezza import)
+from .rbac import can_free_chat, capabilities_of, current_account, require
+
+ENGINE = MANIFEST["gui"].get("engine", "sdk")
+if ENGINE == "agentos":
+    from . import engine_agentos as engine
+else:
+    from . import engine_sdk as engine
+
+GUI_ROOT = Path(__file__).resolve().parents[1]
+AUDIT = GUI_ROOT / "logs" / "gui_audit.log"
+
+app = FastAPI(title=MANIFEST["gui"]["name"])
+
+
+def _audit(account: str, action: str, detail: str, ok: bool = True) -> None:
+    AUDIT.parent.mkdir(parents=True, exist_ok=True)
+    ts = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
+    line = f'[{ts}] account={account} action={action} ok={ok} detail="{detail[:300]}"\n'
+    with AUDIT.open("a", encoding="utf-8") as f:
+        f.write(line)
+
+
+class TaskIn(BaseModel):
+    prompt: str
+    resume: str | None = None
+
+
+class FormIn(BaseModel):
+    values: dict[str, str]
+
+
+@app.get("/api/me")
+def me(account: str = Depends(current_account)):
+    return {"account": account, "capabilities": capabilities_of(account),
+            "free_chat": can_free_chat(account),
+            "forms": prompts.available_forms(), "engine": ENGINE}
+
+
+@app.post("/api/task")
+async def launch_task(body: TaskIn, account: str = Depends(require("task.launch"))):
+    # Prompt LIBERO = chat: consentito solo ai ruoli free-chat (regola G1).
+    if not can_free_chat(account):
+        _audit(account, "task.launch", "negato: prompt libero senza free_chat", ok=False)
+        raise HTTPException(403, "prompt liberi non consentiti al tuo ruolo: usa i form")
+    _audit(account, "task.launch", body.prompt)
+    result = await engine.run_task(body.prompt, body.resume)
+    return _as_dict(result)
+
+
+@app.post("/api/form/{form_id}")
+async def submit_form(form_id: str, body: FormIn,
+                      account: str = Depends(require("form.submit"))):
+    try:
+        prompt = prompts.render_prompt(form_id, body.values)
+    except prompts.FormError as e:
+        _audit(account, f"form.{form_id}", str(e), ok=False)
+        raise HTTPException(422, str(e))
+    _audit(account, f"form.{form_id}", prompt)
+    result = await engine.run_task(prompt)
+    return _as_dict(result)
+
+
+@app.get("/api/task/{task_id}")
+def task_status(task_id: str, account: str = Depends(require("task.status"))):
+    tasks = getattr(engine, "TASKS", {})
+    if task_id not in tasks:
+        raise HTTPException(404, "task sconosciuto")
+    return _as_dict(tasks[task_id])
+
+
+@app.get("/api/dashboard")
+def dashboard(account: str = Depends(require("dashboard"))):
+    state = engine.read_state() if hasattr(engine, "read_state") else ""
+    tasks = [_as_dict(t) for t in getattr(engine, "TASKS", {}).values()]
+    return {"state": state, "tasks": tasks[-50:]}
+
+
+@app.get("/api/outbox")
+def outbox(account: str = Depends(require("outbox.read"))):
+    if not hasattr(engine, "list_proposals"):
+        return {"proposals": [], "note": "engine sdk: le proposte vivono nei task"}
+    return {"proposals": engine.list_proposals()}  # body integrale: diff reale (G4)
+
+
+@app.post("/api/outbox/{proposal_id}/approve")
+def approve(proposal_id: int, account: str = Depends(require("outbox.approve"))):
+    if not hasattr(engine, "approve_proposal"):
+        raise HTTPException(400, "engine senza OUTBOX")
+    ok = engine.approve_proposal(proposal_id, account)
+    _audit(account, "outbox.approve", f"proposta #{proposal_id}", ok=ok)
+    if not ok:
+        raise HTTPException(409, "proposta inesistente o non piu' PENDING")
+    return {"approved": proposal_id, "by": account}
+
+
+@app.get("/")
+def index():
+    return FileResponse(GUI_ROOT / "web" / "index.html")
+
+
+def _as_dict(obj) -> dict:
+    if isinstance(obj, dict):
+        return obj
+    return json.loads(json.dumps(obj, default=lambda o: getattr(o, "__dict__", str(o))))

@@ -76,6 +76,17 @@ jobs:
             "skills/deep-research/references/funnel_tuning.md" \
             "skills/deep-research/templates/fullauto/pipeline.py.template" \
             "skills/deep-research/templates/fullauto/WIRING.md" \
+            "skills/guify/SKILL.md" \
+            "skills/guify/templates/gui.yaml.template" \
+            "skills/guify/templates/standalone/app.py.template" \
+            "skills/guify/templates/standalone/engine_sdk.py.template" \
+            "skills/guify/templates/standalone/engine_agentos.py.template" \
+            "skills/guify/templates/standalone/rbac.py.template" \
+            "skills/guify/templates/standalone/prompts.py.template" \
+            "skills/guify/templates/standalone/index.html.template" \
+            "skills/guify/templates/standalone/test_rbac.py.template" \
+            "skills/guify/templates/artifact/PATTERNS.md" \
+            "skills/guify/templates/widget/PATTERNS.md" \
             "templates/modulo/CLAUDE.md" \
             "templates/modulo/PROJECT_SPEC.md" \
             "templates/modulo/PLAN.md" \
@@ -162,6 +173,89 @@ jobs:
                   print(f"  [{kind}] {m}")
               sys.exit(1)
           print("All plugin.json paths exist")
+          EOF
+
+      - name: Python syntax check (scripts + rendered-as-python templates)
+        run: |
+          echo "Compiling plugin scripts..."
+          python3 -m compileall -q skills/*/scripts/ || exit 1
+          echo "All scripts compile"
+
+      - name: Script paths must use CLAUDE_PLUGIN_ROOT
+        run: |
+          python3 - <<'EOF'
+          import re, sys, pathlib
+          # Un path relativo tipo `python skills/x/scripts/y.py` funziona solo se
+          # la skill e' copiata dentro il progetto. Installata da marketplace la
+          # skill vive nella plugin dir: il comando fallisce al primo uso e il
+          # modello finisce a improvvisare.
+          bad = []
+          pat = re.compile(r'python[0-9.]*\s+["\']?(?:\./)?(?:\.claude/)?skills/')
+          for f in list(pathlib.Path('skills').rglob('SKILL.md')) + \
+                   list(pathlib.Path('commands').glob('*.md')):
+              for i, line in enumerate(f.read_text(encoding='utf-8').splitlines(), 1):
+                  if 'CLAUDE_PLUGIN_ROOT' in line:
+                      continue
+                  if pat.search(line):
+                      bad.append(f"{f}:{i}: {line.strip()}")
+          if bad:
+              print("Script paths senza ${CLAUDE_PLUGIN_ROOT}:")
+              print("\n".join("  " + b for b in bad))
+              sys.exit(1)
+          print("All script invocations use CLAUDE_PLUGIN_ROOT")
+          EOF
+
+      - name: No prose placeholders inside role prompts
+        run: |
+          python3 - <<'EOF'
+          import sys, pathlib
+          # Un "TODO durante scaffolding" dentro la stringa delle instructions
+          # diventa la definizione di scope che il modello legge — e non e' un
+          # {{ }}, quindi il grep documentato in A6 non lo intercetta. Nei
+          # template che finiscono nel system prompt deve essere un placeholder.
+          prompt_facing = [
+              "skills/agentify/templates/agno/role.py.template",
+              "skills/agentify/templates/agno/role_coding_agent.py.template",
+              "skills/agentify/templates/agno/role_high_level_ops.py.template",
+              "skills/agentify/templates/agno/orchestrator.py.template",
+          ]
+          bad = []
+          for p in prompt_facing:
+              f = pathlib.Path(p)
+              if not f.exists():
+                  bad.append(f"{p}: mancante")
+                  continue
+              for i, line in enumerate(f.read_text(encoding='utf-8').splitlines(), 1):
+                  s = line.strip()
+                  # ammesso solo come commento Python di guida, fuori dalla stringa
+                  if "TODO durante scaffolding" in s and not s.startswith("#"):
+                      bad.append(f"{p}:{i}: {s}")
+          if bad:
+              print("Segnaposto in prosa dentro un prompt (usa un {{ placeholder }}):")
+              print("\n".join("  " + b for b in bad))
+              sys.exit(1)
+          print("Role prompts use real placeholders")
+          EOF
+
+      - name: Skill descriptions within budget
+        run: |
+          python3 - <<'EOF'
+          import re, sys, pathlib
+          # Le description stanno SEMPRE in contesto: sono budget, non spazio libero.
+          LIMIT = 600
+          bad, total = [], 0
+          for f in sorted(pathlib.Path('skills').glob('*/SKILL.md')):
+              m = re.search(r'(?m)^description:\s*(.*)$', f.read_text(encoding='utf-8'))
+              n = len(m.group(1)) if m else 0
+              total += n
+              print(f"  {f.parent.name:<24} {n:>4} chars")
+              if n > LIMIT:
+                  bad.append(f"{f.parent.name}: {n} > {LIMIT}")
+          print(f"  {'TOTALE':<24} {total:>4} chars sempre in contesto")
+          if bad:
+              print("Description oltre budget:")
+              print("\n".join("  " + b for b in bad))
+              sys.exit(1)
           EOF
 
       - name: Summary

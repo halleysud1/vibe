@@ -8,6 +8,10 @@ from agno.agent import Agent
 from agent._models import resolve_model
 from agent.tools import HIGH_LEVEL_OPS_TOOLS
 
+# Placeholder da renderizzare (NON lasciarli: finiscono nel system prompt).
+# {{ ops_profiles }}: profili (es. nightly, weekly-research), task ammessi per
+#   ciascuno, comandi CLI del progetto da usare via shell.
+# {{ vincoli_specifici_ruolo }}: vincoli inviolabili aggiuntivi.
 HIGH_LEVEL_OPS_INSTRUCTIONS = """
 ## Ruolo: High-Level Ops
 
@@ -32,8 +36,7 @@ Se non sai classificare un'azione, trattala come L4.
 - il tool-guard scrive docs/ops/AUDIT.md: non scriverci direttamente
 
 ### Compito (profili)
-# TODO durante scaffolding: elencare i profili (es. nightly, weekly-research),
-# i task ammessi per ciascuno, i comandi CLI del progetto da usare via shell.
+{{ ops_profiles }}
 
 ### Vincoli
 - comandi shell: solo la CLI del progetto e comandi read-only; niente

@@ -8,12 +8,15 @@ La definition-of-done e' del PROGETTO, non del modello: comandi oggettivi con
 exit code. Renderizzata dal manifesto (tools.definition_of_done).
 
 Quality gates (4.2.0): `verify` cattura "rotto"; per catturare "che degrada"
-un check puo' essere una METRICA non-decrescente (`"metric":
-"non_decreasing"`): il comando stampa un numero (es. coverage %), verify lo
-confronta con la baseline persistita in docs/ops/.metrics.json — se scende,
-il check FALLISCE anche con exit code 0. Il debito tecnico a velocita'
-macchina si accumula quando tutto e' verde e la qualita' cala in silenzio:
-questi gate rendono il calo visibile.
+un check puo' essere una METRICA non-decrescente (`"metric": "non_decreasing"`
++ `"metric_pattern"`, regex con un gruppo di cattura): verify estrae il numero
+dall'output e lo confronta con la baseline persistita in docs/ops/.metrics.json
+— se scende, il check FALLISCE anche con exit code 0. Il debito tecnico a
+velocita' macchina si accumula quando tutto e' verde e la qualita' cala in
+silenzio: questi gate rendono il calo visibile.
+
+Un verde chiama `GUARD.mark_progress()`: e' il segnale che azzera il churn
+detector, cosi' l'iterazione verificata non viene scambiata per thrashing.
 """
 import json
 import re
@@ -22,10 +25,18 @@ import subprocess
 from agent.tools.guard import GUARD, OPS_DIR, PROJECT_ROOT
 
 # CUSTOMIZE dal manifesto. Ogni check: name, command, required
-# (+ opzionale "metric": "non_decreasing" — il comando stampa un numero).
-# Raccomandazione anti-degrado: lint REQUIRED (non informativo) e almeno
-# una metrica non-decrescente (coverage).
-DEFINITION_OF_DONE = {{ definition_of_done | default('[{"name": "tests", "command": "pytest -q", "required": True}, {"name": "lint", "command": "ruff check .", "required": True}, {"name": "coverage", "command": "pytest -q --cov --cov-report=term | tail -1", "required": False, "metric": "non_decreasing"}]') }}
+# (+ opzionale "metric": "non_decreasing" con "metric_pattern", una regex con UN
+# gruppo di cattura che estrae il numero dall'output).
+#
+# Due regole imparate sul campo:
+# 1. NIENTE PIPE POSIX nei comandi (`| tail`, `| head`, `| grep`): shell=True usa
+#    cmd.exe su Windows e il check fallisce sempre. Un check che fallisce sempre
+#    ma e' `required: False` non urla: diventa un gate SILENZIOSAMENTE INERTE, e
+#    credi di essere coperto quando non lo sei. Estrai col metric_pattern, non
+#    con la pipe.
+# 2. La metrica non-decrescente va dichiarata `required: True`. Se il progetto
+#    non ha coverage, RIMUOVI il check — non degradarlo a informativo.
+DEFINITION_OF_DONE = {{ definition_of_done | default('[{"name": "tests", "command": "pytest -q", "required": True}, {"name": "lint", "command": "ruff check .", "required": True}, {"name": "coverage", "command": "pytest -q --cov --cov-report=term", "required": True, "metric": "non_decreasing", "metric_pattern": r"TOTAL\s+(?:\S+\s+)*?(\d+(?:\.\d+)?)%"}]') }}
 
 METRICS_FILE = OPS_DIR / ".metrics.json"
 METRIC_TOLERANCE = {{ metric_tolerance | default(0.5) }}  # calo tollerato (es. rumore coverage)
@@ -63,7 +74,8 @@ def verify(only: str = "") -> str:
         except subprocess.TimeoutExpired:
             passed, out_tail = False, f"timeout ({_TIMEOUT}s)"
         if passed and c.get("metric") == "non_decreasing":
-            passed, metric_note = _check_metric(c["name"], out_tail)
+            passed, metric_note = _check_metric(c["name"], out_tail,
+                                                c.get("metric_pattern"))
             lines_extra = metric_note
         else:
             lines_extra = ""
@@ -74,17 +86,33 @@ def verify(only: str = "") -> str:
                      + (f" ({lines_extra})" if lines_extra else ""))
         if not passed:
             lines.append(out_tail or "(nessun output)")
+    if all_green:
+        # Progresso oggettivo: azzera il churn detector. Molti edit ciascuno
+        # verificato sono iterazione, non thrashing (vedi guard.mark_progress).
+        GUARD.mark_progress(f"verify VERDE ({only or 'all'})")
     verdict = "VERDE — definition-of-done soddisfatta" if all_green \
         else "ROSSO — correggi e riesegui verify()"
     return verdict + "\n" + "\n".join(lines)
 
 
-def _check_metric(name, output):
-    """Metrica non-decrescente: ultimo numero nell'output vs baseline."""
-    nums = re.findall(r"\d+(?:\.\d+)?", output or "")
-    if not nums:
-        return False, "nessun valore numerico nell'output"
-    value = float(nums[-1])
+def _check_metric(name, output, pattern=None):
+    """Metrica non-decrescente: valore estratto con regex esplicita vs baseline.
+
+    `pattern` DEVE avere un gruppo di cattura col numero. Senza pattern il
+    check fallisce invece di indovinare: prendere "l'ultimo numero
+    dell'output" e' come fissare la baseline sul tempo di esecuzione dei
+    test — poi qualunque coverage la supera e il gate non protegge piu' nulla.
+    """
+    if not pattern:
+        return False, (f"check '{name}' e' una metrica ma non dichiara "
+                       "'metric_pattern' (regex con un gruppo di cattura)")
+    m = re.search(pattern, output or "", re.MULTILINE)
+    if not m:
+        return False, f"metric_pattern non trova il valore nell'output di '{name}'"
+    try:
+        value = float(m.group(1))
+    except (IndexError, ValueError):
+        return False, f"metric_pattern di '{name}' non cattura un numero valido"
     baselines = {}
     if METRICS_FILE.exists():
         try:

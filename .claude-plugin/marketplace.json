@@ -6,15 +6,15 @@
     "url": "https://github.com/halleysud1"
   },
   "metadata": {
-    "description": "Vibecoding 4.x - Toolkit di skill per spec-driven development con Claude Code: filosofia 3-livelli, routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili change-request, agentify (ruoli tool-empowered con tool layer derivato da opencode e tool-guard) e deep research a imbuto con verifica sulla fonte primaria",
-    "version": "4.5.0"
+    "description": "Il metodo spec-driven development per Claude Code: intervista di dominio prima di costruire, routing 3-vie delle regole di progetto, change request che migrano invece di affiancare, agenti standalone governati, ricerche verificate sulla fonte primaria",
+    "version": "5.0.0"
   },
   "plugins": [
     {
       "name": "vibecoding",
       "source": "./",
-      "description": "Toolkit di skill per spec-driven development. Include 7 skill (methodology, validation-strategies, change-request, agentify, skill-bootstrap, md-to-pdf, deep-research), comando /vibecoding:init con routing 3-vie delle desiderata in CLAUDE.md, PROJECT_SPEC e SKILL, e templates per moduli software e cartelle di lavorazione Claude. agentify scaffolda agenti standalone con ruoli tool-empowered: coding-agent (tool reali edit/shell/LSP derivati da opencode) e high-level-ops (run schedulate con autonomy gates L0-L5, tool-guard, audit trail, propose-and-confirm). deep-research porta il funnel di ricerca profonda multi-round con gate umani, cross-check a due gambe e blueprint full-auto.",
-      "version": "4.5.0",
+      "description": "Tiene insieme un progetto nel tempo, che è la parte che un modello forte non fa da solo. /vibecoding:init intervista il dominio e i vincoli prima che si scriva codice, poi instrada ogni desideratum nella sede dove verrà davvero riletto: CLAUDE.md per i vincoli sempre attivi, PROJECT_SPEC per visione e requisiti, una SKILL dedicata per le regole operative ricorrenti. change-request impedisce il bias additivo (si migra, non si affianca) e chiude il loop sulla documentazione nella stessa change. agentify scaffolda un agente standalone per quando serve girare senza Claude Code: ruoli multi-modello, coding-agent con verify loop e checkpoint git, tool-guard con autonomy gates L0-L5 e propose-and-confirm sul diff. guify distribuisce una lavorazione come interfaccia grafica — widget in-chat, artifact condivisibile o app standalone self-hosted sopra Agent SDK/AgentOS, con RBAC default-deny e approvazioni sul diff — per chi non usa Claude Code. deep-research conduce cicli di ricerca profonda dove ogni claim è arbitrato sulla fonte primaria, mai a maggioranza fra LLM. md-to-pdf consegna il risultato come documento impaginato.",
+      "version": "5.0.0",
       "author": {
         "name": "Gianluigi — Halley Sud SRL"
       },

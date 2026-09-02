@@ -5,10 +5,12 @@ Derivato dal supervisor.py dell'ex skill claude-session-supervisor (vibecoding
 LLM. Il giudizio contestuale spetta al modello del ruolo; il guard fa
 enforcement meccanico, in ordine di costo:
 
-1. Kill-switch (counter tool call per run > KILL_SWITCH_LIMIT -> DENY hard)
+1. Kill-switch (counter tool call per run > KILL_SWITCH_LIMIT -> DENY hard,
+   con budget di grazia per i soli tool di diagnosi e rollback)
 2. Denylist baseline (path sensibili, comandi distruttivi) + PROJECT_DENYLIST
-3. Permessi per tool (allow / propose / deny, pattern per shell e path)
-4. propose -> la richiesta viene accodata in OUTBOX.md, NON eseguita
+3. Churn detector (edit ripetuti sullo stesso file senza un verify() VERDE)
+4. Permessi per tool (allow / propose / deny, pattern per shell e path)
+5. propose -> la richiesta viene accodata in OUTBOX.md, NON eseguita
 
 ================================================================================
 COME CUSTOMIZZARE PER IL TUO PROGETTO:
@@ -34,13 +36,34 @@ LOCK_FILE = OPS_DIR / ".run.lock"
 
 KILL_SWITCH_LIMIT = {{ kill_switch_limit | default(200) }}
 
-# Churn detector (4.2.0): lo stesso file modificato troppe volte nella stessa
-# run e' thrashing — il ruolo sta girando a vuoto e accumula edit incoerenti.
+# Churn detector (4.2.0): lo stesso file modificato troppe volte SENZA progresso
+# verificato e' thrashing — il ruolo gira a vuoto e accumula edit incoerenti.
+# Il contatore si AZZERA a ogni verify() VERDE (vedi mark_progress): molti edit
+# ciascuno verificato sono iterazione legittima, non thrashing. Senza il reset
+# il detector colpirebbe proprio il file caldo del task, cioe' il lavoro buono.
 CHURN_LIMIT = {{ churn_limit | default(5) }}
+
+# Tool ancora ammessi DOPO il trip del kill-switch, per un budget di grazia.
+# Un kill-switch che nega anche il rollback taglia il paracadute: lascia il
+# worktree mezzo editato e nessun modo di ripararlo o di capire cosa e'
+# successo. Nessuno di questi tool scrive codice.
+RECOVERY_TOOLS = {"read", "glob", "grep", "repomap", "context", "verify", "gitops"}
+RECOVERY_GRACE = {{ recovery_grace | default(20) }}
 
 # Permessi per tool: "allow" | "propose" | "deny", oppure dict pattern -> azione.
 # Per shell i pattern matchano il comando (fnmatch); per write/edit i path relativi.
 # Renderizzato da agent.yaml -> tools.permissions.
+#
+# PROFILO DI DEFAULT: coding-agent isolato su branch.
+# edit/write/apply_patch sono "allow" perche' il contenimento e' STRUTTURALE:
+# il ruolo lavora solo su branch `agent/*`, non puo' fare push ne' merge, ogni
+# batch e' reversibile col checkpoint git, i path sensibili restano negati dalla
+# baseline. Il propose-and-confirm vive al livello giusto — il DIFF COMPLETO in
+# OUTBOX via `git_propose_diff`, che un umano puo' davvero rivedere — non sulla
+# singola call: una `edit` accodata come payload troncato non e' applicabile e,
+# soprattutto, impedisce a verify() di chiudere il ciclo edit->verifica->verde.
+# Per un ruolo NON isolato su branch (es. high-level-ops che scrive report)
+# restringi "write" alla sola output dir e lascia "*": "propose".
 PERMISSIONS = {
     "read": "allow",
     "glob": "allow",
@@ -51,9 +74,9 @@ PERMISSIONS = {
     "verify": "allow",   # esegue solo la definition-of-done dichiarata
     "gitops": "allow",   # vincolato by-construction: solo branch agent/*, mai push
     "context": "allow",  # project_context read-only; log_decision append-only sul journal
-    "edit": {{ permissions.edit | default('"propose"') }},
-    "write": {{ permissions.write | default('{"docs/ops/**": "allow", "*": "propose"}') }},
-    "apply_patch": {{ permissions.apply_patch | default('"propose"') }},
+    "edit": {{ permissions.edit | default('"allow"') }},
+    "write": {{ permissions.write | default('"allow"') }},
+    "apply_patch": {{ permissions.apply_patch | default('"allow"') }},
     "shell": {{ permissions.shell | default('{"git status": "allow", "git diff*": "allow", "pytest*": "allow", "git push*": "deny", "rm *": "deny", "*": "propose"}') }},
     "webfetch": {{ permissions.webfetch | default('"deny"') }},
 }
@@ -149,6 +172,24 @@ class Guard:
         except FileNotFoundError:
             pass
 
+    # --- progresso verificato: resetta il churn ---
+
+    def mark_progress(self, note: str = "") -> None:
+        """Chiamata da verify() quando la definition-of-done e' VERDE.
+
+        Il churn detector deve distinguere il thrashing (molti edit, nessun
+        progresso) dall'iterazione legittima (molti edit, ciascuno verificato).
+        Il segnale oggettivo di progresso e' un verde: da li' si riparte a
+        contare, altrimenti un refactor su piu' batch verrebbe bloccato proprio
+        sul file su cui il task insiste per definizione.
+        """
+        with self._lock:
+            counted = sum(self._edit_counts.values())
+            self._edit_counts = {}
+        if counted:
+            self._audit("guard", note[:200], "RESET", "churn_reset",
+                        f"progresso verificato: azzerati {counted} edit conteggiati")
+
     # --- gate: da chiamare PRIMA di ogni azione dei tool ---
 
     def gate(self, tool_name, detail):
@@ -162,7 +203,17 @@ class Guard:
         detail_str = json.dumps(detail, ensure_ascii=False, default=str)[:200]
 
         if n > KILL_SWITCH_LIMIT:
-            reason = f"kill-switch (tool call #{n} > {KILL_SWITCH_LIMIT})"
+            # Grazia: diagnosi e rollback restano possibili, la scrittura no.
+            if tool_name in RECOVERY_TOOLS and n <= KILL_SWITCH_LIMIT + RECOVERY_GRACE:
+                self._audit(tool_name, detail_str, "ALLOW", "kill_switch_recovery",
+                            "grazia post kill-switch: solo diagnosi e rollback")
+                return None
+            reason = (
+                f"kill-switch (tool call #{n} > {KILL_SWITCH_LIMIT}). "
+                f"Hai ancora {RECOVERY_GRACE} chiamate di grazia per "
+                f"{sorted(RECOVERY_TOOLS)}: usale per git_revert_to_checkpoint() "
+                "e per riportare cosa hai tentato. Non insistere con altro."
+            )
             self._audit(tool_name, detail_str, "DENY", "kill_switch", reason)
             raise GuardDenied(reason)
 
@@ -186,9 +237,11 @@ class Guard:
                 self._edit_counts[fp] = self._edit_counts.get(fp, 0) + 1
                 edits = self._edit_counts[fp]
             if edits > CHURN_LIMIT:
-                reason = (f"thrashing: '{fp}' modificato {edits} volte in questa run "
-                          f"(> {CHURN_LIMIT}). Fermati: rileggi il file, riporta il "
-                          "blocco o fai rollback — non insistere alla cieca.")
+                reason = (f"thrashing: '{fp}' modificato {edits} volte senza un "
+                          f"verify() VERDE in mezzo (> {CHURN_LIMIT}). Fermati: "
+                          "rileggi il file, riporta il blocco o fai rollback — non "
+                          "insistere alla cieca. Il contatore riparte da zero al "
+                          "primo verde.")
                 self._audit(tool_name, detail_str, "DENY", "churn_detector", reason)
                 raise GuardDenied(reason)
 

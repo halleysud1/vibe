@@ -1,7 +1,7 @@
 {
   "name": "vibecoding",
-  "version": "4.5.0",
-  "description": "Toolkit di skill per spec-driven development con Claude Code. Filosofia 3-livelli (business/ecosistema/tecnico), routing 3-vie (CLAUDE.md/PROJECT_SPEC/SKILL), protocolli portabili per change-request e agentify (agenti standalone con ruoli tool-empowered: coding-agent con tool layer derivato da opencode, high-level-ops schedulato, tool-guard con autonomy gates L0-L5), cicli di deep research multi-round con verifica sulla fonte primaria, bootstrap di nuovi progetti, conversione Markdown -> PDF con sintesi AI opzionale.",
+  "version": "5.0.0",
+  "description": "Tiene insieme un progetto nel tempo, che e' la parte che un modello forte non fa da solo: intervista il dominio prima di costruirci sopra, instrada ogni regola nella sede dove verra' riletta (CLAUDE.md / PROJECT_SPEC / SKILL), migra invece di affiancare e lascia la documentazione allineata al codice a fine change. In piu': agentify per agenti standalone con tool-guard e autonomy gates, guify per distribuire una lavorazione come interfaccia grafica (widget, artifact o app standalone con RBAC), deep-research per ricerche arbitrate sulla fonte primaria, md-to-pdf per la consegna.",
   "author": {
     "name": "Gianluigi — Halley Sud SRL",
     "url": "https://github.com/halleysud1"
@@ -41,6 +41,7 @@
     "./skills/agentify/",
     "./skills/skill-bootstrap/",
     "./skills/md-to-pdf/",
-    "./skills/deep-research/"
+    "./skills/deep-research/",
+    "./skills/guify/"
   ]
 }

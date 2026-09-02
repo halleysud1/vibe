@@ -9,17 +9,21 @@ e nessuno lo sa: non e' automazione, e' un job che sparisce.
 
 ## 1. Copia e rinomina
 
+Sorgente = `${CLAUDE_PLUGIN_ROOT}` (la root del plugin installato):
+
 ```
-skills/deep-research/scripts/deep_research.py     → <progetto>/scripts/deep_research.py
-skills/deep-research/scripts/grounded_research.py → <progetto>/scripts/grounded_research.py
-skills/deep-research/scripts/env_loader.py        → <progetto>/scripts/env_loader.py
-templates/fullauto/pipeline.py.template           → <progetto>/agent/workflows/pipeline.py
-templates/fullauto/research_tools.py.template     → <progetto>/agent/tools/research.py
+$CLAUDE_PLUGIN_ROOT/skills/deep-research/scripts/deep_research.py     → <progetto>/scripts/deep_research.py
+$CLAUDE_PLUGIN_ROOT/skills/deep-research/scripts/grounded_research.py → <progetto>/scripts/grounded_research.py
+$CLAUDE_PLUGIN_ROOT/skills/deep-research/scripts/env_loader.py        → <progetto>/scripts/env_loader.py
+$CLAUDE_PLUGIN_ROOT/skills/deep-research/templates/fullauto/pipeline.py.template       → <progetto>/agent/workflows/pipeline.py
+$CLAUDE_PLUGIN_ROOT/skills/deep-research/templates/fullauto/research_tools.py.template → <progetto>/agent/tools/research.py
 ```
 
-Alternativa: lasciare gli script nella skill e puntarli con
-`DEEPRESEARCH_SCRIPT=<path>`. Copiarli rende il progetto autonomo dal plugin —
-preferibile per un agente che gira su una macchina dove il plugin non e' installato.
+I due file copiati assumono per default `scripts/deep_research.py` **dentro il
+progetto**: e' la destinazione della tabella qui sopra. Alternativa: lasciare gli
+script nel plugin e puntarli con `DEEPRESEARCH_SCRIPT=<path assoluto>` — ma il
+daemon gira spesso su una macchina dove il plugin non e' installato, quindi la
+copia e' il default consigliato.
 
 ## 2. Sostituisci i segnaposto
 

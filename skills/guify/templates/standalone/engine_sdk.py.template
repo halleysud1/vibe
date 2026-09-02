@@ -1,0 +1,108 @@
+"""Engine 'sdk': sessioni Claude headless sotto la GUI, via Claude Agent SDK.
+
+Auth: la stessa dell'abbonamento (token OAuth di Claude Code, gia' presente
+sulla macchina dopo il login) -> prezzo fisso, nessun costo a token. Il token
+resta server-side (regola G3): questo modulo gira nel backend, mai nel browser.
+
+Permessi: la sessione monta SEMPRE allowed_tools/permission_mode dal manifesto
+(regola G5). Chi usa la GUI comanda un modello con QUESTI permessi, non di piu'.
+
+Fallback: se claude-agent-sdk non e' installato, si usa la CLI `claude` in
+modalita' headless (-p, --output-format stream-json) — stesso contratto.
+
+NOTA: file generico — nessun placeholder. Copialo as-is nel target.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import shutil
+import uuid
+from dataclasses import dataclass, field
+
+from .rbac import MANIFEST
+
+_SESSION = MANIFEST.get("session", {})
+_CWD = _SESSION.get("cwd") or "."
+_ALLOWED = _SESSION.get("allowed_tools") or []
+_PERM_MODE = _SESSION.get("permission_mode") or "default"
+
+
+@dataclass
+class TaskResult:
+    task_id: str
+    status: str = "running"          # running | done | error
+    session_id: str | None = None    # per riprendere la conversazione
+    output: str = ""
+    error: str = ""
+    events: list = field(default_factory=list)
+
+
+TASKS: dict[str, TaskResult] = {}
+
+
+async def run_task(prompt: str, resume_session: str | None = None) -> TaskResult:
+    """Lancia (o riprende) una sessione headless e ne raccoglie l'esito."""
+    task = TaskResult(task_id=uuid.uuid4().hex[:12])
+    TASKS[task.task_id] = task
+    try:
+        await _run_with_sdk(task, prompt, resume_session)
+    except ImportError:
+        await _run_with_cli(task, prompt, resume_session)
+    except Exception as e:  # fail loud, mai silenzioso
+        task.status, task.error = "error", f"{type(e).__name__}: {e}"[:500]
+    return task
+
+
+async def _run_with_sdk(task: TaskResult, prompt: str, resume: str | None) -> None:
+    from claude_agent_sdk import ClaudeAgentOptions, query  # ImportError -> fallback CLI
+
+    options = ClaudeAgentOptions(
+        cwd=_CWD,
+        allowed_tools=_ALLOWED,
+        permission_mode=_PERM_MODE,
+        resume=resume,
+    )
+    async for message in query(prompt=prompt, options=options):
+        task.events.append(str(type(message).__name__))
+        sid = getattr(message, "session_id", None)
+        if sid:
+            task.session_id = sid
+        result = getattr(message, "result", None)
+        if isinstance(result, str):
+            task.output = result
+    task.status = "done" if task.output else "error"
+    if task.status == "error":
+        task.error = "sessione terminata senza risultato"
+
+
+async def _run_with_cli(task: TaskResult, prompt: str, resume: str | None) -> None:
+    exe = shutil.which("claude")
+    if not exe:
+        task.status, task.error = "error", "ne' claude-agent-sdk ne' CLI claude disponibili"
+        return
+    cmd = [exe, "-p", prompt, "--output-format", "stream-json", "--verbose",
+           "--permission-mode", _PERM_MODE]
+    for t in _ALLOWED:
+        cmd += ["--allowedTools", t]
+    if resume:
+        cmd += ["--resume", resume]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd, cwd=_CWD,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    assert proc.stdout is not None
+    async for raw in proc.stdout:
+        try:
+            evt = json.loads(raw.decode("utf-8", "replace"))
+        except ValueError:
+            continue
+        task.events.append(evt.get("type", "?"))
+        task.session_id = evt.get("session_id", task.session_id)
+        if evt.get("type") == "result":
+            task.output = evt.get("result", "") or ""
+            task.status = "error" if evt.get("is_error") else "done"
+    rc = await proc.wait()
+    if task.status == "running":
+        task.status = "done" if rc == 0 else "error"
+        if rc != 0:
+            task.error = (await proc.stderr.read()).decode("utf-8", "replace")[-500:]

@@ -1,6 +1,6 @@
 ---
 name: md-to-pdf
-description: "Converte file Markdown in PDF formattati. Due motori: 'chromium' (alta fedelta', default — impagina HTML con tema CSS professionale e lo stampa via headless Chromium: tabelle eleganti, callout, syntax highlighting, diagrammi mermaid renderizzati, footer con numeri di pagina; tema opzionale generato da Gemini) e 'markdown-pdf' (pure-python, fallback offline). Supporta CSS personalizzato, batch e una sintesi AI opzionale (Gemini) appesa in coda al PDF senza alterare il sorgente .md. Usa questa skill quando l'utente vuole esportare in PDF una spec, una skill, un report, una brochure o un documento markdown con una veste grafica curata."
+description: "Converte Markdown in PDF con una veste grafica curata: motore Chromium ad alta fedelta' (tabelle, callout, syntax highlighting, diagrammi mermaid renderizzati, numeri di pagina) con fallback pure-python offline. Supporta CSS personalizzato, conversione batch e una sintesi AI opzionale in coda al PDF senza alterare il sorgente .md. Usala quando l'utente vuole esportare in PDF una spec, un report, una skill, una brochure o un documento markdown."
 ---
 
 # /md-to-pdf — Markdown -> PDF (alta fedelta' + sintesi AI opzionale)
@@ -67,25 +67,25 @@ GEMINI_API_KEY=...
 
 ```bash
 # Conversione singola, alta fedelta' (auto -> chromium se disponibile)
-python skills/md-to-pdf/scripts/convert.py docs/spec.md
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/spec.md
 
 # Output specifico
-python skills/md-to-pdf/scripts/convert.py docs/spec.md -o reports/spec_v2.pdf
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/spec.md -o reports/spec_v2.pdf
 
 # Tema grafico generato da Gemini su misura del documento
-python skills/md-to-pdf/scripts/convert.py docs/brochure.md --gemini-theme
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/brochure.md --gemini-theme
 
 # Forzare il fallback pure-python (offline / no Chromium)
-python skills/md-to-pdf/scripts/convert.py docs/spec.md --engine markdown-pdf
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/spec.md --engine markdown-pdf
 
 # Batch su una cartella
-python skills/md-to-pdf/scripts/convert.py docs/specs/*.md --out-dir reports/
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/specs/*.md --out-dir reports/
 
 # Con sintesi AI in coda al PDF (sorgente .md NON viene toccato)
-python skills/md-to-pdf/scripts/convert.py docs/long-spec.md --ai-summary
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" docs/long-spec.md --ai-summary
 
 # CSS personalizzato + metadata
-python skills/md-to-pdf/scripts/convert.py spec.md --css mio_stile.css --title "Spec v2" --author "Team"
+python "${CLAUDE_PLUGIN_ROOT}/skills/md-to-pdf/scripts/convert.py" spec.md --css mio_stile.css --title "Spec v2" --author "Team"
 ```
 
 ## Opzioni CLI

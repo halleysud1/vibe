@@ -5,6 +5,9 @@ Recognized prefixes: claude-, gpt-, gemini-, deepseek-, glm-.
 Reasoning: `resolve_model(id, reasoning=...)` accetta "low" | "medium" | "high".
 Il livello NON e' fissato per ruolo: lo decide l'Orchestrator task per task
 (vedi ORCHESTRATOR_INSTRUCTIONS e models.reasoning_policy nel manifesto).
+Traduzione per provider: effort per Claude 5-family (high -> xhigh; niente
+budget_tokens, rimosso dall'API), reasoning_effort per GPT, thinking budget
+per Gemini, thinking on/off per DeepSeek/GLM.
 I kwargs provider-specifici sono best-effort: se la versione di Agno/provider
 non li supporta, il factory ripiega sul modello senza parametro (verifica col
 bench, Fase 5.4).
@@ -14,8 +17,16 @@ NOTA: questo file è generico — non contiene placeholder. Copialo as-is nel ta
 
 from __future__ import annotations
 
-# Budget di thinking per i provider che ragionano a token
+# Budget di thinking per i provider che ragionano a token (Gemini)
 _THINKING_TOKENS = {"low": 1024, "medium": 8192, "high": 24576}
+
+# Claude 5-family: il thinking e' ADATTIVO e la profondita' si controlla con
+# l'effort, non coi token. `budget_tokens` e' stato RIMOSSO dall'API (errore
+# 400 se inviato) e su alcuni modelli il thinking non e' disattivabile: mai
+# inviare "disabled". La scala interna low/medium/high mappa "high" su
+# "xhigh", il livello raccomandato per l'agentic coding ("max" resta scelta
+# manuale esplicita, non un default della policy).
+_CLAUDE_EFFORT = {"low": "low", "medium": "medium", "high": "xhigh"}
 
 
 def _provider(model_id: str):
@@ -76,8 +87,10 @@ def _reasoning_kwargs(model_id: str, reasoning: str) -> dict:
     if model_id.startswith("gpt-"):
         return {"reasoning_effort": reasoning}
     if model_id.startswith("claude-"):
-        return {"thinking": {"type": "enabled",
-                             "budget_tokens": _THINKING_TOKENS[reasoning]}}
+        # NON usare {"type": "enabled", "budget_tokens": N}: rimosso
+        # dall'API sui modelli correnti, risponde 400.
+        return {"thinking": {"type": "adaptive"},
+                "effort": _CLAUDE_EFFORT[reasoning]}
     if model_id.startswith("gemini-"):
         return {"thinking_budget": _THINKING_TOKENS[reasoning]}
     if model_id.startswith(("deepseek-", "glm-")):
