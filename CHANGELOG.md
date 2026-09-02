@@ -1,5 +1,19 @@
 # Changelog
 
+## [5.0.1] - 2026-09-02
+
+### Added — principio 8 in `methodology`: linguaggio chiaro con l'essere umano
+
+Recuperato un contenuto che viveva **solo nella copia installata del plugin**
+(modificata direttamente in un'altra sessione, mai propagata al repo — l'update
+della cache l'avrebbe cancellato): nella comunicazione e nei piani rivolti
+all'utente, sigle sciolte alla prima occorrenza, niente nomi in codice senza
+significato, etichette parlanti — con rigore doppio nelle attività massive
+pianificate con l'utente. Nuovo anti-pattern corrispondente in tabella.
+La sezione diventa "Gli 8 principi".
+
+---
+
 ## [5.0.0] - 2026-07-27
 
 Release di hardening: tutti i difetti corretti qui erano **comportamentali** —

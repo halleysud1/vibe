@@ -147,7 +147,7 @@ Per decisioni non ovvie, usa il sistema auto-memory:
 
 ---
 
-## I 7 principi (consolidati v3.0)
+## Gli 8 principi
 
 ### 1. Intervista prima, costruisci dopo
 Non iniziare a costruire senza aver capito il dominio (L1) e i vincoli (L2). Per
@@ -175,6 +175,16 @@ Leggi sempre i vincoli L2 (CLAUDE.md) prima di scelte architetturali.
 ### 7. Semplicità
 La soluzione più semplice che soddisfa i requisiti **e** rispetta i vincoli è
 la migliore.
+
+### 8. Linguaggio chiaro con l'essere umano
+Nella comunicazione e nei piani rivolti all'utente il linguaggio è **chiaro, non
+ambiguo e non abbreviato**: sigle e termini tecnici sciolti alla prima occorrenza,
+gergo solo se spiegato, mai nomi in codice privi di significato per battezzare
+attività, piani o file che l'utente dovrà leggere. Il rigore **raddoppia quando si
+pianificano con l'utente attività massive** (campagne di scrittura, migrazioni,
+bonifiche): ogni etichetta deve dire cosa fa, ogni numero deve dire da dove viene.
+Se uno strumento genera un nome casuale (es. il file di piano di Claude Code),
+dichiararlo subito come tale e dare al lavoro un titolo vero.
 
 ---
 
@@ -246,6 +256,7 @@ e invecchierebbe senza che nessuno se ne accorga.
 | Skip dell'intervista | Manca il dominio | Max 2-3 round, poi procedi |
 | Ripetere codice nel contesto | Context rot | Riferisci per path:riga |
 | Aggiungere senza migrare | Parallel flows latenti | `/change-request` Fase 1: classifica obsoleto |
+| Nomi in codice e sigle non spiegate verso l'utente | Ambiguità nei piani, decisioni prese su equivoci | Principio 8: linguaggio chiaro, sigle sciolte, etichette parlanti |
 
 ---
 

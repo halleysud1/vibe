@@ -1,6 +1,6 @@
 # Vibecoding — SDD toolkit per Claude Code
 
-> Versione corrente: **5.0.0** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
+> Versione corrente: **5.0.1** — vedi [CHANGELOG](CHANGELOG.md) e [Releases](https://github.com/halleysud1/vibe/releases).
 
 ## A cosa serve
 
